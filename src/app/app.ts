@@ -9,6 +9,7 @@ import { playSound } from '../game/sound';
 import { Editor } from '../editor/editor';
 import { saveGame, loadGame, loadGameTG, encodeForURL, decodeFromURL } from './storage';
 import { tgInit, tgHaptic, tgShare, tgBackButton, isTG } from './tg';
+import { initLang, t } from './i18n';
 
 type AppMode = 'edit' | 'play';
 
@@ -24,8 +25,13 @@ export class App {
   private _hud: HUD;
   private _mode: AppMode = 'edit';
   private _jumpPressed = false;
+  private _shootPressed = false;
+  private _health = 3;
+  private _maxHealth = 3;
+  private _damageCooldown = 0;
 
   constructor(containerId: string) {
+    initLang();
     tgInit();
 
     const container = document.querySelector<HTMLElement>(containerId);
@@ -73,6 +79,7 @@ export class App {
 
     // HUD callbacks
     this._hud.onJump = () => { this._jumpPressed = true; };
+    this._hud.onShoot = () => { this._shootPressed = true; };
 
     // Keyboard input for play mode
     this._engine.onUpdate((dt) => this._update(dt));
@@ -97,7 +104,8 @@ export class App {
       this._hud.el.style.display = 'none';
       this._player = null;
 
-      // Hide main renderer in edit mode (editor has its own 3D preview)
+      // Switch camera back to orbit for editor
+      this._engine.camera.mode = 'orbit';
       this._engine.renderer.root.style.display = 'none';
       this._engine.pause();
 
@@ -118,8 +126,15 @@ export class App {
       this._triggers.reset();
       this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
 
-      this._engine.camera.state.distance = 18;
-      this._engine.camera.state.rotationX = -25;
+      this._health = this._maxHealth;
+      this._damageCooldown = 0;
+
+      // FPS camera: first person
+      this._engine.camera.mode = 'fly';
+      this._engine.camera.state.rotationX = 0;
+      this._engine.camera.state.rotationY = 0;
+      const sp = this._world.findSpawn();
+      this._engine.camera.state.position.set(sp[0] + 0.5, sp[1] + 1.5, sp[2] + 0.5);
 
       // Try enabling gyro
       this._gyro.requestPermission().then(ok => { if (ok) this._gyro.start(); });
@@ -159,6 +174,7 @@ export class App {
     if (pinchDelta) this._engine.camera.zoom(pinchDelta * 2);
     this._engine.input.resetDeltas();
 
+    // FPS: camera yaw drives player direction
     p.state.yaw = this._engine.camera.state.rotationY * (Math.PI / 180);
 
     // Gyroscope
@@ -171,32 +187,80 @@ export class App {
       tgHaptic(sfx === 'hit' ? 'heavy' : 'light');
     }
 
+    // Shooting
+    if (this._shootPressed) {
+      this._shootPressed = false;
+      this._shoot();
+    }
+
     // Triggers
     const events = this._triggers.evaluate(
       this._world.triggers, p.state, this._world, dt,
     );
     this._handleEvents(events);
 
-    // Update camera target to follow player
+    // FPS camera: position = player eyes
     const cam = this._engine.camera.state;
-    cam.target.x += (p.state.x - cam.target.x) * 0.1;
-    cam.target.y += (p.state.y + 1 - cam.target.y) * 0.1;
-    cam.target.z += (p.state.z - cam.target.z) * 0.1;
+    cam.position.x = p.state.x;
+    cam.position.y = p.state.y + 1.5;
+    cam.position.z = p.state.z;
+
+    // Damage cooldown
+    if (this._damageCooldown > 0) this._damageCooldown -= dt;
+
+    // Health-based damage (instead of instant death)
+    if (!p.state.alive && this._health > 0 && this._damageCooldown <= 0) {
+      this._health--;
+      this._damageCooldown = 1.0;
+      if (this._health > 0) {
+        p.state.alive = true;
+        playSound('hit');
+        tgHaptic('heavy');
+      }
+    }
 
     // HUD
     this._hud.setScore(p.state.score);
+    this._hud.el.querySelector('.hud-top')!.innerHTML =
+      `<span class="hud-score">${p.state.score}</span> &nbsp; ${'&#9829;'.repeat(this._health)}${'&#9825;'.repeat(this._maxHealth - this._health)}`;
 
     // Death / Win
-    if (!p.state.alive) {
-      this._hud.showMessage('You Died! Tap to retry');
+    if (!p.state.alive && this._health <= 0) {
+      this._hud.showMessage(`${t('you_died')} ${t('tap_retry')}`);
       this._waitForTap(() => {
         p.respawn();
         this._hud.showMessage('');
         this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
       });
     } else if (p.state.won) {
-      this._hud.showMessage('You Win!');
+      this._hud.showMessage(t('you_win'));
       this._waitForTap(() => this.setMode('edit'));
+    }
+  }
+
+  /** Raycast from player eyes forward, destroy first block hit */
+  private _shoot() {
+    const p = this._player;
+    if (!p) return;
+    playSound('hit');
+    tgHaptic('medium');
+
+    const yaw = this._engine.camera.state.rotationY * (Math.PI / 180);
+    const pitch = this._engine.camera.state.rotationX * (Math.PI / 180);
+    const dx = -Math.sin(yaw) * Math.cos(pitch);
+    const dy = Math.sin(pitch);
+    const dz = Math.cos(yaw) * Math.cos(pitch);
+
+    let rx = p.state.x, ry = p.state.y + 1.5, rz = p.state.z;
+    for (let i = 0; i < 50; i++) {
+      rx += dx * 0.3; ry += dy * 0.3; rz += dz * 0.3;
+      const bx = Math.floor(rx), by = Math.floor(ry), bz = Math.floor(rz);
+      if (this._world.isSolid(bx, by, bz)) {
+        this._world.clear(bx, by, bz);
+        this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
+        playSound('explode');
+        return;
+      }
     }
   }
 
@@ -241,7 +305,7 @@ export class App {
   private _save() {
     const save = this._world.serialize();
     const ok = saveGame(save);
-    this._hud.toast(ok ? 'Saved!' : 'Save failed', 1500);
+    this._hud.toast(ok ? t('saved') : t('save_fail'), 1500);
     playSound('pickup');
   }
 
@@ -250,6 +314,6 @@ export class App {
     const encoded = encodeForURL(save);
     const url = `${location.origin}${location.pathname}?g=${encoded}`;
     tgShare(url);
-    this._hud.toast('Link copied!', 1500);
+    this._hud.toast(t('link_copied'), 1500);
   }
 }

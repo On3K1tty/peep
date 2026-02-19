@@ -1,4 +1,5 @@
 import { WORLD_SIZE, type World } from '../game/world';
+import { t } from '../app/i18n';
 
 const S = WORLD_SIZE;
 const GRID_PX = 10;
@@ -52,8 +53,12 @@ export class LayerGrid {
 
   setLayer(y: number) {
     this._layer = Math.max(0, Math.min(S - 1, y));
-    this._layerLabel.textContent = `Layer ${this._layer} / ${S - 1}`;
+    this.updateLabel();
     this.draw();
+  }
+
+  updateLabel() {
+    this._layerLabel.textContent = `${t('layer')} ${this._layer} ${t('of')} ${S - 1}`;
   }
 
   draw() {

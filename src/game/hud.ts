@@ -1,19 +1,21 @@
 export class HUD {
   readonly el: HTMLElement;
-  private _score: HTMLElement;
   private _msg: HTMLElement;
   private _toast: HTMLElement;
   private _toastTimer = 0;
   private _dpad: HTMLElement;
+  private _shootBtn: HTMLElement;
+  private _crosshair: HTMLElement;
 
   onJump?: () => void;
-  onMove?: (forward: number, right: number) => void;
+  onShoot?: () => void;
 
   constructor() {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML =
       '<div class="hud-top"><span class="hud-score">0</span></div>' +
+      '<div class="hud-crosshair">+</div>' +
       '<div class="hud-msg"></div>' +
       '<div class="hud-toast"></div>' +
       '<div class="hud-dpad">' +
@@ -22,14 +24,18 @@ export class HUD {
         '<button class="dp dp-r" data-d="r">&#9654;</button>' +
         '<button class="dp dp-d" data-d="d">&#9660;</button>' +
         '<button class="dp dp-j" data-d="j">&#8679;</button>' +
-      '</div>';
+      '</div>' +
+      '<button class="hud-shoot">&#9678;</button>';
 
-    this._score = this.el.querySelector('.hud-score')!;
     this._msg = this.el.querySelector('.hud-msg')!;
     this._toast = this.el.querySelector('.hud-toast')!;
     this._dpad = this.el.querySelector('.hud-dpad')!;
+    this._shootBtn = this.el.querySelector('.hud-shoot')!;
+    this._crosshair = this.el.querySelector('.hud-crosshair')!;
 
     this._bindDpad();
+    this._shootBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this.onShoot?.(); }, { passive: false });
+    this._shootBtn.addEventListener('mousedown', (e) => { e.preventDefault(); this.onShoot?.(); });
   }
 
   private _moveState = { u: false, d: false, l: false, r: false };
@@ -64,7 +70,7 @@ export class HUD {
   }
 
   setScore(n: number) {
-    this._score.textContent = String(n);
+    // Score is now set via innerHTML from app.ts (includes hearts)
   }
 
   showMessage(text: string) {
@@ -83,6 +89,8 @@ export class HUD {
 
   setDpadVisible(v: boolean) {
     this._dpad.style.display = v ? 'flex' : 'none';
+    this._shootBtn.style.display = v ? 'flex' : 'none';
+    this._crosshair.style.display = v ? 'block' : 'none';
   }
 
   destroy() {

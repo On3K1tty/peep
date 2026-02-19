@@ -15,10 +15,10 @@ export interface CameraState {
 
 export class Camera {
   state: CameraState;
-  private _mode: 'orbit' | 'fly';
+  mode: 'orbit' | 'fly';
 
   constructor(mode: 'orbit' | 'fly' = 'orbit') {
-    this._mode = mode;
+    this.mode = mode;
     this.state = {
       position: new Vec3(0, 5, 10),
       rotationX: -25,
@@ -28,8 +28,6 @@ export class Camera {
     };
   }
 
-  get mode() { return this._mode; }
-
   /**
    * Compute view matrix. Converts from voxel units to CSS pixel space.
    * World coords: X right, Y up, Z towards viewer.
@@ -38,7 +36,7 @@ export class Camera {
   getViewMatrix(voxelSize = 1): Mat4 {
     const s = voxelSize;
 
-    if (this._mode === 'orbit') {
+    if (this.mode === 'orbit') {
       const rx = Mat4.rotationX(this.state.rotationX * DEG);
       const ry = Mat4.rotationY(this.state.rotationY * DEG);
       // Negate x,z to center on target; Y is inverted (world up = CSS down)

@@ -5,6 +5,7 @@ import { LayerGrid } from './layer-grid';
 import { Palette } from './palette';
 import { TriggerEditor } from './trigger-ui';
 import { playSound } from '../game/sound';
+import { t, getLangs, setLang, getLang } from '../app/i18n';
 
 type EditorTool = 'draw' | 'erase' | 'pick' | 'role';
 
@@ -75,10 +76,40 @@ export class Editor {
     this._previewRenderer.world.appendChild(this._previewMesh.el);
     this._previewMesh.el.style.transformStyle = 'preserve-3d';
 
-    // Auto-rotate preview
+    // Preview rotation: auto + drag + gyro
+    let dragging = false;
+    let lastX = 0, lastY = 0;
+    this._previewWrap.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+    this._previewWrap.addEventListener('touchstart', (e) => { dragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }, { passive: true });
+    window.addEventListener('mousemove', (e) => { if (!dragging) return; this._previewCam.orbit((e.clientX - lastX) * 0.5, (e.clientY - lastY) * 0.5); lastX = e.clientX; lastY = e.clientY; this._previewAngle = this._previewCam.state.rotationY; });
+    window.addEventListener('touchmove', (e) => { if (!dragging) return; this._previewCam.orbit((e.touches[0].clientX - lastX) * 0.5, (e.touches[0].clientY - lastY) * 0.5); lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; this._previewAngle = this._previewCam.state.rotationY; });
+    window.addEventListener('mouseup', () => { dragging = false; });
+    window.addEventListener('touchend', () => { dragging = false; });
+    this._previewWrap.addEventListener('wheel', (e) => { e.preventDefault(); this._previewCam.zoom(e.deltaY * 0.02); }, { passive: false });
+
+    // Gyro on preview
+    const setupGyro = async () => {
+      const DOE = DeviceOrientationEvent as any;
+      if (typeof DOE.requestPermission === 'function') {
+        try { await DOE.requestPermission(); } catch { return; }
+      }
+      let baseA = 0, baseB = 0, first = true;
+      window.addEventListener('deviceorientation', (e) => {
+        if (e.alpha == null || e.beta == null) return;
+        if (first) { baseA = e.alpha; baseB = e.beta; first = false; }
+        if (!dragging) {
+          const ya = (e.alpha - baseA) * 0.3;
+          const pi = (e.beta - baseB) * 0.3;
+          this._previewCam.state.rotationY += (ya - this._previewCam.state.rotationY) * 0.08;
+          this._previewCam.state.rotationX += (Math.max(-89, Math.min(89, pi)) - this._previewCam.state.rotationX) * 0.08;
+          this._previewAngle = this._previewCam.state.rotationY;
+        }
+      });
+    };
+    setupGyro();
+
     const rotatePreview = () => {
-      this._previewAngle += 0.15;
-      this._previewCam.state.rotationY = this._previewAngle;
+      if (!dragging) { this._previewAngle += 0.08; this._previewCam.state.rotationY = this._previewAngle; }
       this._previewRenderer.render();
       requestAnimationFrame(rotatePreview);
     };
@@ -111,20 +142,39 @@ export class Editor {
     // ── Toolbar ──
     this.toolbar = document.createElement('div');
     this.toolbar.className = 'toolbar edit-only';
-    this.toolbar.innerHTML =
-      '<button class="tb-draw active" data-tool="draw">Draw</button>' +
-      '<button class="tb-erase" data-tool="erase">Erase</button>' +
-      '<button class="tb-role" data-tool="role">Role</button>' +
-      '<button class="tb-triggers">Triggers</button>' +
-      '<div class="tb-spacer"></div>' +
-      '<button class="tb-play">Play</button>' +
-      '<button class="tb-save">Save</button>' +
-      '<button class="tb-share">Share</button>';
+    this._rebuildToolbar();
     container.appendChild(this.toolbar);
 
     this._bindToolbar();
     this._refreshPreview();
     this._updateUndoButtons();
+  }
+
+  private _rebuildToolbar() {
+    this.toolbar.innerHTML =
+      `<button class="tb-draw active" data-tool="draw">${t('draw')}</button>` +
+      `<button class="tb-erase" data-tool="erase">${t('erase')}</button>` +
+      `<button class="tb-role" data-tool="role">${t('role')}</button>` +
+      `<button class="tb-triggers">${t('triggers')}</button>` +
+      `<select class="tb-lang"></select>` +
+      `<div class="tb-spacer"></div>` +
+      `<button class="tb-play">${t('play')}</button>` +
+      `<button class="tb-save">${t('save')}</button>` +
+      `<button class="tb-share">${t('share')}</button>`;
+
+    const langSelect = this.toolbar.querySelector('.tb-lang') as HTMLSelectElement;
+    for (const { code, name } of getLangs()) {
+      const opt = document.createElement('option');
+      opt.value = code; opt.textContent = name;
+      if (code === getLang()) opt.selected = true;
+      langSelect.appendChild(opt);
+    }
+    langSelect.addEventListener('change', () => {
+      setLang(langSelect.value);
+      this._rebuildToolbar();
+      this._bindToolbar();
+      this.layerGrid.updateLabel();
+    });
   }
 
   private _bindToolbar() {
