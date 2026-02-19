@@ -160,16 +160,34 @@ export class App {
 
     this._race = new Race(this._container, () => this._gyro.getSteer());
     this._race.onFinish = (won) => {
-      // White flash -> transition to editor
       this._flashEl.classList.add('on');
+      const removeFlash = () => this._flashEl.classList.remove('on');
+      // Guaranteed: remove white overlay 2.5s after flash (even if transition fails)
+      setTimeout(removeFlash, 2500);
       setTimeout(() => {
-        this._race?.destroy();
-        this._race = null;
-        this._initEditor();
-        this.setMode('edit');
-        // Fade flash out
-        setTimeout(() => this._flashEl.classList.remove('on'), 300);
-      }, 1000);
+        try {
+          this._race?.destroy();
+          this._race = null;
+          this._mode = 'edit';
+          this._container.className = 'mode-edit';
+          this._initEditor();
+          this._editor.setVisible(true);
+          this._editor.refresh();
+          this._hud.setDpadVisible(false);
+          this._hud.showMessage('');
+          this._hud.el.style.display = 'none';
+          this._engine.camera.mode = 'orbit';
+          this._engine.renderer.root.style.display = 'none';
+          this._engine.pause();
+          this._gyro.stop();
+          tgBackButton(false);
+          removeFlash();
+        } catch (e) {
+          removeFlash();
+          this._mode = 'edit';
+          this._container.className = 'mode-edit';
+        }
+      }, 800);
     };
     this._race.start();
   }

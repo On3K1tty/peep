@@ -72,7 +72,7 @@ export class Editor {
     container.appendChild(this._editorWrap);
 
     this._cam = new Camera('orbit');
-    this._cam.state.distance = 35;
+    this._cam.state.distance = 80;
     this._cam.state.rotationX = -30;
     this._cam.state.rotationY = 35;
     this._cam.state.target.set(WORLD_SX / 2, WORLD_SY / 4, WORLD_SZ / 2);

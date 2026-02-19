@@ -3,7 +3,7 @@
  * Single canvas ~250x250; grid is X (columns) x Z (rows) for current layer Y.
  */
 import type { World } from '../game/world';
-import { WORLD_SX, WORLD_SZ } from '../game/world';
+import { WORLD_SX, WORLD_SY, WORLD_SZ } from '../game/world';
 
 const CANVAS_SIZE = 250;
 const SX = WORLD_SX;

@@ -214,7 +214,9 @@ export class Race {
         this._finished = true;
         const won = this._pz >= this._bz;
         playSound(won ? 'win' : 'lose');
-        setTimeout(() => this.onFinish?.(won), 1500);
+        setTimeout(() => {
+          this.onFinish?.(won);
+        }, 800);
       }
     }
 

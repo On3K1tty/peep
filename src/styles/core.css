@@ -113,6 +113,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui
 .gyro-btn.off .gyro-icon { border-radius:2px; }
 .gyro-btn.on .gyro-icon { border-radius:50%; }
 
+/* ── Race (2D canvas) ── */
+.race-wrap { position:fixed; inset:0; z-index:250; }
+.race-canvas { display:block; width:100%; height:100%; }
+
 /* ── White flash transition ── */
 .flash { position:fixed; inset:0; z-index:400; background:#fff; opacity:0; transition:opacity 0.8s; pointer-events:none; }
 .flash.on { opacity:1; }

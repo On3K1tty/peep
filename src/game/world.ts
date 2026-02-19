@@ -1,10 +1,10 @@
 import { BlockRole } from '../engine/types';
 import type { TriggerDef, GameSave } from '../engine/types';
 
-/** 32x32x32 cap per level per plan; chain via portals for larger worlds */
-export const WORLD_SX = 32;
+/** 128x32x128 per level; chain via portals for larger worlds */
+export const WORLD_SX = 128;
 export const WORLD_SY = 32;
-export const WORLD_SZ = 32;
+export const WORLD_SZ = 128;
 const SX = WORLD_SX;
 const SY = WORLD_SY;
 const SZ = WORLD_SZ;
@@ -39,7 +39,7 @@ export class World {
   portalTargets: Record<string, [number, number, number]> = {};
   name = 'Untitled';
 
-  private _spawnPos: [number, number, number] = [16, 16, 16];
+  private _spawnPos: [number, number, number] = [64, 1, 64];
 
   constructor() {
     this.grid = new Uint8Array(S3);
@@ -108,7 +108,7 @@ export class World {
         return [x, y + 1, z];
       }
     }
-    return [16, 16, 16];
+    return [64, 1, 64];
   }
 
   reset() {
@@ -117,7 +117,7 @@ export class World {
     this.triggers = [];
     this.moverPaths = {};
     this.portalTargets = {};
-    this._spawnPos = [16, 16, 16];
+    this._spawnPos = [64, 1, 64];
   }
 
   generateDefault() {
@@ -128,14 +128,15 @@ export class World {
         if (x === 0 || x === SX - 1 || z === 0 || z === SZ - 1)
           this.set(x, 0, z, 3);
       }
-    this.set(4, 1, 4, 6, BlockRole.SPAWN);
-    const pathLen = Math.min(20, SZ - 8);
-    for (let z = 4; z < 4 + pathLen; z++) {
-      this.set(4, 0, z, 3);
-      this.set(5, 0, z, 3);
+    const cx = Math.floor(SX / 2);
+    const cz = Math.floor(SZ / 2);
+    this.set(cx, 1, cz - 10, 6, BlockRole.SPAWN);
+    const pathLen = Math.min(20, SZ - cz + 6);
+    for (let z = cz - 10; z < cz - 10 + pathLen; z++) {
+      this.set(cx, 0, z, 3);
+      this.set(cx + 1, 0, z, 3);
     }
-    const px = SX - 6, pz = SZ - 6;
-    if (px >= 6 && pz >= 10) this._placeWheelchairPerson(px, 1, pz);
+    this._placeWheelchairPerson(cx - 3, 1, cz - 3);
   }
 
   private _placeWheelchairPerson(bx: number, by: number, bz: number) {
