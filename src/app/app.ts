@@ -11,7 +11,7 @@ import { saveGame, loadGame, encodeForURL, decodeFromURL } from './storage';
 import { tgInit, tgHaptic, tgShare, tgBackButton } from './tg';
 import { initLang, t } from './i18n';
 
-type AppMode = 'edit' | 'play';
+type AppMode = 'splash' | 'edit' | 'play';
 
 export class App {
   private _container: HTMLElement;
@@ -23,7 +23,7 @@ export class App {
   private _triggers: TriggerRuntime;
   private _gyro: GyroCamera;
   private _hud: HUD;
-  private _mode: AppMode = 'edit';
+  private _mode: AppMode = 'splash';
   private _jumpPressed = false;
   private _health = 3;
   private _maxHealth = 3;
@@ -33,6 +33,8 @@ export class App {
   private _gyroBtn: HTMLElement;
   private _lastTapTime = 0;
   private _exitPlayBtn: HTMLElement;
+  private _splashEl: HTMLElement | null = null;
+  private _pendingUrlPlay = false;
 
   constructor(containerId: string) {
     initLang();
@@ -115,15 +117,52 @@ export class App {
     container.appendChild(this._exitPlayBtn);
     this._exitPlayBtn.style.display = 'none';
 
-    if (urlData) {
-      this._initEditor();
-      this.setMode('play');
-    } else {
-      this._initEditor();
-      this.setMode('edit');
-    }
+    this._pendingUrlPlay = !!urlData;
+    this._showSplash();
 
     tgBackButton(false);
+  }
+
+  /** Загрузочный экран: кнопка Старт включает гироскоп (user gesture для iOS). */
+  private _showSplash() {
+    this._mode = 'splash';
+    this._container.className = 'mode-splash';
+
+    this._splashEl = document.createElement('div');
+    this._splashEl.className = 'splash';
+    const startLabel = t('start') || 'Старт';
+    this._splashEl.innerHTML =
+      '<div class="splash-title">PEEP</div>' +
+      '<div class="splash-sub">' + (t('splash_tip') || 'Наклон телефона — управление') + '</div>' +
+      '<button class="splash-start" type="button">' + startLabel + '</button>';
+
+    const startBtn = this._splashEl.querySelector('.splash-start')!;
+    startBtn.addEventListener('click', () => this._onSplashStart());
+
+    this._container.appendChild(this._splashEl);
+    this._gyroBtn.style.display = 'none';
+  }
+
+  /** По нажатию Старт (user gesture): запрос гироскопа → включение → переход в редактор/игру. */
+  private async _onSplashStart() {
+    if (!this._splashEl) return;
+    playSound('click');
+    tgHaptic('light');
+
+    const ok = await this._gyro.requestPermission();
+    if (ok) this._gyro.start();
+
+    this._splashEl.remove();
+    this._splashEl = null;
+    this._gyroBtn.style.display = '';
+
+    this._initEditor();
+    if (this._pendingUrlPlay) {
+      this._pendingUrlPlay = false;
+      this.setMode('play');
+    } else {
+      this.setMode('edit');
+    }
   }
 
   private _initEditor() {

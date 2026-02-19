@@ -2,7 +2,7 @@
 const K = [
   'draw','erase','role','triggers','play','save','share','undo','redo',
   'layer','of','settings','language','you_died','you_win','tap_retry',
-  'score','saved','save_fail','link_copied','shoot','back',
+  'score','saved','save_fail','link_copied','shoot','back','start','splash_tip',
 ] as const;
 
 type Key = typeof K[number];
@@ -37,9 +37,9 @@ const FLAGS: Record<string, string> = {
 // T[langIndex] = array of translated strings matching K order
 const T: string[][] = [
   // en
-  ['Draw','Erase','Role','Triggers','Play','Save','Share','Undo','Redo','Layer','of','Settings','Language','You Died!','You Win!','Tap to retry','Score','Saved!','Save failed','Link copied!','Shoot','Back'],
+  ['Draw','Erase','Role','Triggers','Play','Save','Share','Undo','Redo','Layer','of','Settings','Language','You Died!','You Win!','Tap to retry','Score','Saved!','Save failed','Link copied!','Shoot','Back','Start','Tilt phone to move'],
   // ru
-  ['Рисовать','Стереть','Роль','Триггеры','Играть','Сохранить','Поделиться','Отменить','Вернуть','Слой','из','Настройки','Язык','Ты погиб!','Победа!','Нажми для повтора','Счёт','Сохранено!','Ошибка','Ссылка скопирована!','Стрелять','Выйти'],
+  ['Рисовать','Стереть','Роль','Триггеры','Играть','Сохранить','Поделиться','Отменить','Вернуть','Слой','из','Настройки','Язык','Ты погиб!','Победа!','Нажми для повтора','Счёт','Сохранено!','Ошибка','Ссылка скопирована!','Стрелять','Выйти','Старт','Наклон телефона — управление'],
   // es
   ['Dibujar','Borrar','Rol','Disparadores','Jugar','Guardar','Compartir','Deshacer','Rehacer','Capa','de','Ajustes','Idioma','¡Moriste!','¡Ganaste!','Toca para reintentar','Puntos','¡Guardado!','Error al guardar','¡Enlace copiado!','Disparar'],
   // zh
