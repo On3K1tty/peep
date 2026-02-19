@@ -81,6 +81,68 @@ export class World {
     return this.get(Math.floor(x), Math.floor(y), Math.floor(z)) !== 0;
   }
 
+  /** Sims-Voxel: заполняет параллелепипед вокселями (база для домов). */
+  putBox(x: number, y: number, z: number, sx: number, sy: number, sz: number, colorId: number) {
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const z0 = Math.max(0, Math.floor(z));
+    const x1 = Math.min(SX, x0 + Math.max(0, Math.floor(sx)));
+    const y1 = Math.min(SY, y0 + Math.max(0, Math.floor(sy)));
+    const z1 = Math.min(SZ, z0 + Math.max(0, Math.floor(sz)));
+    for (let ix = x0; ix < x1; ix++)
+      for (let iy = y0; iy < y1; iy++)
+        for (let iz = z0; iz < z1; iz++)
+          this.set(ix, iy, iz, colorId);
+  }
+
+  /** Sims-Voxel: параллелепипед без внутренности (стены + пол + потолок). */
+  putHollowBox(x: number, y: number, z: number, sx: number, sy: number, sz: number, colorId: number) {
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const z0 = Math.max(0, Math.floor(z));
+    const x1 = Math.min(SX, x0 + Math.max(0, Math.floor(sx)));
+    const y1 = Math.min(SY, y0 + Math.max(0, Math.floor(sy)));
+    const z1 = Math.min(SZ, z0 + Math.max(0, Math.floor(sz)));
+    if (x1 <= x0 || y1 <= y0 || z1 <= z0) return;
+    for (let ix = x0; ix < x1; ix++)
+      for (let iz = z0; iz < z1; iz++) {
+        this.set(ix, y0, iz, colorId);
+        if (y1 - y0 > 1) this.set(ix, y1 - 1, iz, colorId);
+      }
+    for (let iy = y0; iy < y1; iy++)
+      for (let iz = z0; iz < z1; iz++) {
+        this.set(x0, iy, iz, colorId);
+        if (x1 - x0 > 1) this.set(x1 - 1, iy, iz, colorId);
+      }
+    for (let ix = x0; ix < x1; ix++)
+      for (let iy = y0; iy < y1; iy++) {
+        this.set(ix, iy, z0, colorId);
+        if (z1 - z0 > 1) this.set(ix, iy, z1 - 1, colorId);
+      }
+  }
+
+  /** Sims-Voxel: алгоритмическое дерево (сосна/дуб). x,z — база, height — высота ствола + крона. */
+  putTree(x: number, z: number, height: number) {
+    const bx = Math.floor(x);
+    const bz = Math.floor(z);
+    if (bx < 0 || bx >= SX || bz < 0 || bz >= SZ) return;
+    const trunkH = Math.max(1, Math.floor(height * 0.5));
+    const leafR = Math.max(1, Math.floor(height * 0.35));
+    const wood = 2;
+    const leaf = 1;
+    for (let y = 0; y < trunkH && y < SY; y++) this.set(bx, y, bz, wood);
+    const cy = Math.min(trunkH, SY - 1);
+    for (let dy = 0; dy <= leafR && cy + dy < SY; dy++)
+      for (let dx = -leafR; dx <= leafR; dx++)
+        for (let dz = -leafR; dz <= leafR; dz++) {
+          const nx = bx + dx;
+          const nz = bz + dz;
+          if (nx < 0 || nx >= SX || nz < 0 || nz >= SZ) continue;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (dist <= leafR + 0.5) this.set(nx, cy + dy, nz, leaf);
+        }
+  }
+
   /** Grid for meshing: in play mode SPAWN blocks are treated as air (invisible). */
   getGridForDisplay(playMode: boolean): Uint8Array {
     if (!playMode) return this.grid;

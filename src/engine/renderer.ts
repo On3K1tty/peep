@@ -1,4 +1,5 @@
 import { Mat4, Vec3, DEG } from './math';
+import { rayIntersectVoxel } from './raycaster';
 
 export interface CameraState {
   /** Camera position in voxel units (fly mode) */
@@ -126,6 +127,45 @@ export class Renderer {
   render() {
     const view = this.camera.getViewMatrix(this._voxelSize);
     this.world.style.transform = view.toCSS();
+  }
+
+  /**
+   * Sims-Voxel: переводит 2D-клик в 3D-луч и возвращает блок и грань.
+   * screenX, screenY — координаты в viewport (например clientX, clientY).
+   * Возвращает { x, y, z, face } или null.
+   */
+  pickVoxel(
+    screenX: number,
+    screenY: number,
+    grid: Uint8Array,
+    sx: number,
+    sy?: number,
+    sz?: number,
+  ): { x: number; y: number; z: number; face: import('./types').FaceNormal } | null {
+    const Sy = sy ?? sx;
+    const Sz = sz ?? sx;
+    const rect = this.root.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const px = screenX - cx;
+    const py = screenY - cy;
+    const pz = -this._perspectivePx;
+    const view = this.camera.getViewMatrix(this._voxelSize);
+    const invView = view.invert();
+    const m = invView.m;
+    const ox = m[12];
+    const oy = m[13];
+    const oz = m[14];
+    const dx = m[0] * px + m[4] * py + m[8] * pz;
+    const dy = m[1] * px + m[5] * py + m[9] * pz;
+    const dz = m[2] * px + m[6] * py + m[10] * pz;
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    const s = this._voxelSize;
+    return rayIntersectVoxel(
+      ox / s, oy / s, oz / s,
+      dx / len, dy / len, dz / len,
+      grid, sx, Sy, Sz,
+    );
   }
 
   destroy() {

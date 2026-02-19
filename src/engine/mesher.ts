@@ -19,6 +19,10 @@ const CONFIGS: {
  * Greedy meshing from a flat grid (Uint8Array) + palette.
  * grid[x + y*sx + z*sx*sy] = palette index (0 = air).
  * sx, sy, sz: dimensions (default cubic 32).
+ *
+ * Multi-block: одинаковые соседние воксели по каждому направлению
+ * объединяются в один квад (greedy merge). Макро-объекты (дом из 100 вокселей)
+ * дают 4 стены = 4 плоских полигона на сторону (минимальный draw call).
  */
 export function greedyMeshGrid(
   grid: Uint8Array,
