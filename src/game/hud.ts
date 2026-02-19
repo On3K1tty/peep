@@ -7,6 +7,7 @@ export class HUD {
   private _zoomWrap: HTMLElement;
   private _moveState = { u: false, d: false, l: false, r: false };
   private _zoomDelta = 0;
+  private _lastUpTap = 0;
 
   onJump?: () => void;
   onZoomIn?: () => void;
@@ -19,13 +20,11 @@ export class HUD {
       '<div class="hud-top"><span class="hud-score">0</span></div>' +
       '<div class="hud-msg"></div>' +
       '<div class="hud-toast"></div>' +
-      '<button class="hud-jump" type="button">&#8679;</button>' +
       '<div class="hud-dpad" style="display:none">' +
         '<button class="dp dp-u" data-d="u" type="button">&#9650;</button>' +
         '<button class="dp dp-l" data-d="l" type="button">&#9664;</button>' +
         '<button class="dp dp-r" data-d="r" type="button">&#9654;</button>' +
         '<button class="dp dp-d" data-d="d" type="button">&#9660;</button>' +
-        '<button class="dp dp-j" data-d="j" type="button">&#8679;</button>' +
       '</div>' +
       '<div class="hud-zoom" style="display:none">' +
         '<button class="hz hz-in" type="button">+</button>' +
@@ -37,20 +36,20 @@ export class HUD {
     this._dpad = this.el.querySelector('.hud-dpad')!;
     this._zoomWrap = this.el.querySelector('.hud-zoom')!;
 
-    const jumpBtn = this.el.querySelector('.hud-jump')!;
-    jumpBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this.onJump?.(); }, { passive: false });
-    jumpBtn.addEventListener('mousedown', (e) => { e.preventDefault(); this.onJump?.(); });
-
     this._dpad.querySelectorAll('.dp').forEach((btn) => {
       const d = (btn as HTMLElement).dataset.d!;
       const start = (e: Event) => {
         e.preventDefault();
-        if (d === 'j') { this.onJump?.(); return; }
+        if (d === 'u') {
+          const now = Date.now();
+          if (now - this._lastUpTap < 400) { this.onJump?.(); this._lastUpTap = 0; return; }
+          this._lastUpTap = now;
+        }
         (this._moveState as any)[d] = true;
       };
       const end = (e: Event) => {
         e.preventDefault();
-        if (d !== 'j') (this._moveState as any)[d] = false;
+        (this._moveState as any)[d] = false;
       };
       btn.addEventListener('touchstart', start, { passive: false });
       btn.addEventListener('touchend', end, { passive: false });

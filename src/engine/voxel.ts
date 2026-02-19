@@ -1,6 +1,7 @@
 import { Mat4, DEG } from './math';
 import type { MergedFace, FaceNormal, SceneNode } from './types';
 import { greedyMeshGrid } from './mesher';
+import { getNoiseBank, pickNoiseSeed, varyColor } from './noise';
 
 const FACE_BRIGHTNESS: Record<FaceNormal, number> = {
   top: 1.0,
@@ -39,17 +40,32 @@ export class WorldMesh implements SceneNode {
     this._faceEls.length = 0;
 
     const s = this._voxelSize;
+    const noiseUrls = getNoiseBank();
+    const normIdx: Record<FaceNormal, number> = { top: 0, bottom: 1, front: 2, back: 3, left: 4, right: 5 };
+
     for (const face of faces) {
       const div = document.createElement('div');
       const fw = face.w * s;
       const fh = face.h * s;
 
-      div.className = 'vf';
+      const seed = (face.x * 31 + face.y * 17 + face.z * 7 + normIdx[face.normal]) | 0;
+      const baseColor = varyColor(face.color, seed);
+      const brightness = FACE_BRIGHTNESS[face.normal];
+      const noiseIdx = pickNoiseSeed(face.x, face.y, face.z) % noiseUrls.length;
+      const noiseUrl = noiseUrls[noiseIdx];
+
+      /* процедурный стиль: цвет + градиент AO (грязные углы) + шум */
+      const aoGradient = 'linear-gradient(135deg,transparent 50%,rgba(0,0,0,0.12) 100%),linear-gradient(225deg,transparent 50%,rgba(0,0,0,0.08) 100%)';
+      div.className = 'vf vf-proc';
       div.style.cssText =
         `position:absolute;width:${fw}px;height:${fh}px;` +
         `backface-visibility:hidden;transform-origin:0 0;` +
         `image-rendering:pixelated;pointer-events:auto;` +
-        `background:${face.color};filter:brightness(${FACE_BRIGHTNESS[face.normal]})`;
+        `background-color:${baseColor};` +
+        `background-image:url("${noiseUrl}"),${aoGradient};` +
+        `background-size:64px 64px,100% 100%,100% 100%;` +
+        `background-blend-mode:overlay,normal,normal;` +
+        `filter:brightness(${brightness});`;
 
       div.style.transform = faceTransform(face, s);
       div.dataset.n = face.normal;

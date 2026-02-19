@@ -87,13 +87,13 @@ export class App {
     this._engine.start();
     this._engine.pause();
 
-    // Gyro toggle (visible in race + editor)
+    // Gyro toggle (visible in editor + play)
     this._gyroBtn = document.createElement('button');
     this._gyroBtn.className = 'gyro-btn off';
     this._gyroBtn.type = 'button';
     this._gyroBtn.setAttribute('aria-label', 'Gyro');
     this._gyroBtn.title = t('gyro_toggle') || 'Гиро вкл/выкл';
-    this._gyroBtn.innerHTML = '<span class="gyro-icon"></span><span class="gyro-label">' + (t('gyro') || 'Гиро') + '</span>';
+    this._gyroBtn.innerHTML = '<span class="gyro-icon"></span>';
     this._gyroBtn.addEventListener('click', () => this._onGyroToggle());
     container.appendChild(this._gyroBtn);
 
@@ -156,6 +156,8 @@ export class App {
     this._splashEl.remove();
     this._splashEl = null;
     this._gyroBtn.style.display = '';
+    this._gyroBtn.classList.toggle('on', this._gyro.enabled);
+    this._gyroBtn.classList.toggle('off', !this._gyro.enabled);
 
     this._initEditor();
     if (this._pendingUrlPlay) {

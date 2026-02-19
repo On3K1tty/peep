@@ -14,19 +14,18 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui
 
 .exit-play-btn { position:fixed; top:12px; left:12px; z-index:60; padding:10px 16px; border:none; border-radius:8px; background:rgba(20,20,30,0.9); color:#fff; font-size:14px; cursor:pointer; border:1px solid rgba(255,255,255,0.15); }
 .exit-play-btn:active { background:rgba(76,175,80,0.3); }
-.hud-jump { position:fixed; bottom:24px; right:24px; width:56px; height:56px; border-radius:50%; border:2px solid rgba(76,175,80,0.5); background:rgba(76,175,80,0.2); color:#4CAF50; font-size:28px; cursor:pointer; z-index:55; display:flex; align-items:center; justify-content:center; }
-.hud-jump:active { background:rgba(76,175,80,0.4); }
-.hud-dpad { position:absolute; bottom:16px; left:16px; display:grid; grid-template-columns:48px 48px 48px; grid-template-rows:48px 48px; gap:4px; }
+.hud-dpad { position:absolute; bottom:16px; left:64px; display:grid; grid-template-columns:48px 48px 48px; grid-template-rows:48px 48px; gap:4px; }
 .hud-dpad .dp { width:48px; height:48px; border:none; border-radius:8px; background:rgba(255,255,255,0.12); color:#fff; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .hud-dpad .dp:active { background:rgba(255,255,255,0.25); }
 .hud-dpad .dp-u { grid-column:2; grid-row:1; } .hud-dpad .dp-l { grid-column:1; grid-row:2; } .hud-dpad .dp-r { grid-column:3; grid-row:2; } .hud-dpad .dp-d { grid-column:2; grid-row:2; }
-.hud-dpad .dp-j { grid-column:3; grid-row:1; background:rgba(76,175,80,0.25); }
 .hud-zoom { position:absolute; bottom:16px; right:16px; flex-direction:column; gap:4px; z-index:55; }
 .hud-zoom .hz { width:48px; height:48px; border:none; border-radius:8px; background:rgba(255,255,255,0.12); color:#fff; font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .hud-zoom .hz:active { background:rgba(255,255,255,0.25); }
 .hud-zoom .hz-in { border-radius:8px 8px 0 0; } .hud-zoom .hz-out { border-radius:0 0 8px 8px; }
 
 /* ── 3D World + Fake Shadows ── */
+/* процедурные грани вокселей (шум + AO) */
+.vf-proc { isolation: isolate; }
 .voxel-world { background: linear-gradient(180deg, #0f3460 0%, #16213e 40%, #1a1a2e 100%); }
 .voxel-world::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:1; background:linear-gradient(to bottom,transparent 20%,rgba(0,0,0,0.25) 100%); mix-blend-mode:multiply; }
 .voxel-world::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1; opacity:0.06; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); mix-blend-mode:multiply; }
@@ -41,11 +40,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui
 .hud-toast.show { opacity:1; }
 
 /* ── D-Pad ── */
-.hud-dpad { position:absolute; bottom:16px; left:16px; display:grid; grid-template-columns:48px 48px 48px; grid-template-rows:48px 48px; gap:4px; }
+.hud-dpad { position:absolute; bottom:16px; left:64px; display:grid; grid-template-columns:48px 48px 48px; grid-template-rows:48px 48px; gap:4px; }
 .dp { width:48px; height:48px; border:none; border-radius:8px; background:rgba(255,255,255,0.12); color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .dp:active { background:rgba(255,255,255,0.25); }
 .dp-u { grid-column:2; grid-row:1; } .dp-l { grid-column:1; grid-row:2; } .dp-r { grid-column:3; grid-row:2; } .dp-d { grid-column:2; grid-row:2; }
-.dp-j { grid-column:3; grid-row:1; background:rgba(76,175,80,0.25); }
 .hud-crosshair { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:28px; color:rgba(255,255,255,0.6); pointer-events:none; text-shadow:0 0 4px rgba(0,0,0,0.8); display:none; font-weight:300; }
 .hud-shoot { position:absolute; bottom:20px; right:20px; width:64px; height:64px; border-radius:50%; border:2px solid rgba(255,100,100,0.4); background:rgba(255,50,50,0.15); color:#ff6666; font-size:32px; display:none; align-items:center; justify-content:center; cursor:pointer; }
 .hud-shoot:active { background:rgba(255,50,50,0.4); }
@@ -76,14 +74,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui
 .layer-grid-btn:active { background:rgba(76,175,80,0.3); }
 .layer-grid-canvas { display:none; }
 
-/* ── Editor joystick (когда гиро выключен) ── */
-.editor-joystick { display:flex; position:fixed; bottom:90px; right:12px; z-index:90; flex-direction:column; align-items:center; gap:8px; }
-.editor-joystick .ej-dpad { display:grid; grid-template-columns:40px 40px 40px; grid-template-rows:40px 40px; gap:3px; }
-.editor-joystick .ej-dp { width:40px; height:40px; border:none; border-radius:8px; background:rgba(255,255,255,0.12); color:#fff; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+/* ── Editor joystick (такой же как HUD: d-pad слева, zoom справа) ── */
+.editor-joystick { display:flex; position:fixed; bottom:16px; left:0; right:0; z-index:90; justify-content:space-between; align-items:flex-end; pointer-events:none; }
+.editor-joystick > * { pointer-events:auto; }
+.editor-joystick .ej-dpad { margin-left:64px; display:grid; grid-template-columns:48px 48px 48px; grid-template-rows:48px 48px; gap:4px; }
+.editor-joystick .ej-dp { width:48px; height:48px; border:none; border-radius:8px; background:rgba(255,255,255,0.12); color:#fff; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .editor-joystick .ej-dp:active { background:rgba(255,255,255,0.25); }
 .editor-joystick .ej-dp.ej-u { grid-column:2; grid-row:1; } .editor-joystick .ej-dp.ej-l { grid-column:1; grid-row:2; } .editor-joystick .ej-dp.ej-r { grid-column:3; grid-row:2; } .editor-joystick .ej-dp.ej-d { grid-column:2; grid-row:2; }
-.editor-joystick .ej-zoom { display:flex; flex-direction:column; gap:2px; }
-.editor-joystick .ej-z { width:40px; height:40px; border:none; border-radius:8px; background:rgba(255,255,255,0.12); color:#fff; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.editor-joystick .ej-zoom { margin-right:16px; display:flex; flex-direction:column; gap:2px; }
+.editor-joystick .ej-z { width:48px; height:48px; border:none; border-radius:8px; background:rgba(255,255,255,0.12); color:#fff; font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .editor-joystick .ej-z:active { background:rgba(255,255,255,0.25); }
 
 /* ── 3D Editor (FULL SCREEN, Minecraft-style) ── */
@@ -117,14 +116,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui
 .btn-add-trigger { height:36px; border:1px dashed rgba(255,255,255,0.2); border-radius:8px; background:transparent; color:#888; width:100%; cursor:pointer; font-size:13px; }
 .btn-close-panel { position:absolute; top:10px; right:10px; width:32px; height:32px; border:none; border-radius:50%; background:rgba(255,255,255,0.1); color:#fff; font-size:18px; cursor:pointer; }
 
-/* ── Gyro toggle (editor + play) ── */
-.gyro-btn { position:fixed; bottom:92px; right:20px; width:40px; height:40px; border:2px solid rgba(255,255,255,0.25); background:rgba(40,40,55,0.9); color:#fff; cursor:pointer; z-index:60; display:flex; align-items:center; justify-content:center; transition:border-radius 0.2s, background 0.2s; }
-.gyro-btn.off { border-radius:6px; }
-.gyro-btn.on { border-radius:50%; background:rgba(76,175,80,0.25); border-color:rgba(76,175,80,0.5); }
-.gyro-btn:active { background:rgba(255,255,255,0.15); }
-.gyro-icon { width:20px; height:20px; background:currentColor; opacity:0.9; }
-.gyro-btn.off .gyro-icon { border-radius:2px; }
-.gyro-btn.on .gyro-icon { border-radius:50%; }
+/* ── Gyro toggle (editor + play) — левый бок, иконка круга ── */
+.gyro-btn { position:fixed; bottom:24px; left:12px; width:48px; height:48px; border:none; cursor:pointer; z-index:60; display:flex; align-items:center; justify-content:center; border-radius:50%; transition:background 0.2s; }
+.gyro-btn.off .gyro-icon { background:#c62828; box-shadow:0 0 8px rgba(198,40,40,0.5); }
+.gyro-btn.on .gyro-icon { background:#1b5e20; box-shadow:0 0 8px rgba(27,94,32,0.5); }
+.gyro-btn:active .gyro-icon { filter:brightness(1.2); }
+.gyro-icon { width:24px; height:24px; border-radius:50%; transition:background 0.2s; }
 
 /* ── Race (2D canvas) ── */
 .race-wrap { position:fixed; inset:0; z-index:250; }
