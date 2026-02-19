@@ -3,8 +3,6 @@ import type { Camera } from '../engine/renderer';
 const EMA = 0.12;
 const RAD2DEG = 180 / Math.PI;
 
-type OrientationSource = 'deviceorientation' | 'deviceorientationabsolute' | 'sensor';
-
 export class GyroCamera {
   enabled = false;
   private _baseAlpha = 0;
@@ -17,41 +15,53 @@ export class GyroCamera {
   private _hasPermission = false;
   private _handler: ((e: DeviceOrientationEvent) => void) | null = null;
   private _handlerAbsolute: ((e: DeviceOrientationEvent) => void) | null = null;
+  private _motionHandler: ((e: DeviceMotionEvent) => void) | null = null;
   private _sensor: any = null;
-  private _source: OrientationSource | null = null;
+  private _motionActive = false;
 
   async requestPermission(): Promise<boolean> {
     const DOE = DeviceOrientationEvent as any;
+    const DME = DeviceMotionEvent as any;
+
     if (typeof DOE.requestPermission === 'function') {
       try {
         const result = await DOE.requestPermission();
         this._hasPermission = result === 'granted';
+        if (this._hasPermission && typeof DME.requestPermission === 'function') {
+          try {
+            const motionResult = await DME.requestPermission();
+            this._hasPermission = motionResult === 'granted';
+          } catch (_) {}
+        }
       } catch {
         this._hasPermission = false;
       }
       return this._hasPermission;
     }
 
-    // Android: нет requestPermission, но нужен доступ к сенсорам.
-    // Пробуем включить AbsoluteOrientationSensor — на Chrome Android это запрашивает разрешение.
-    const win = window as any;
-    if (typeof win.AbsoluteOrientationSensor === 'function') {
+    if (typeof DME.requestPermission === 'function') {
       try {
-        const sensor = new win.AbsoluteOrientationSensor({ frequency: 30 });
-        await sensor.start();
-        sensor.stop();
-        this._hasPermission = true;
+        const result = await DME.requestPermission();
+        this._hasPermission = result === 'granted';
       } catch {
         this._hasPermission = true;
       }
       return this._hasPermission;
     }
 
+    const win = window as any;
+    if (typeof win.AbsoluteOrientationSensor === 'function') {
+      try {
+        const sensor = new win.AbsoluteOrientationSensor({ frequency: 30 });
+        await sensor.start();
+        sensor.stop();
+      } catch (_) {}
+    }
+
     this._hasPermission = true;
     return true;
   }
 
-  /** Toggle gyro on/off. Requests permission on first enable. Returns new state. */
   async toggle(): Promise<boolean> {
     if (this.enabled) {
       this.stop();
@@ -75,6 +85,30 @@ export class GyroCamera {
     }
   }
 
+  /** Управление по акселерометру (DeviceMotion) — почти всегда работает на Android. */
+  private _onMotion(e: DeviceMotionEvent) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x == null || a.y == null || a.z == null) return;
+
+    const x = a.x;
+    const y = a.y;
+    const z = a.z;
+    const norm = Math.sqrt(x * x + y * y + z * z) || 1;
+
+    const gx = x / norm;
+    const gy = y / norm;
+    const gz = z / norm;
+
+    const beta = Math.atan2(-gz, -gy + 1e-6) * RAD2DEG;
+    const gamma = Math.atan2(gx, -gy + 1e-6) * RAD2DEG;
+
+    this._motionActive = true;
+    this._targetPitch = (beta - this._baseBeta) * 0.4;
+    this._targetForward = Math.max(-1, Math.min(1, (beta - this._baseBeta) * 0.025));
+    this._steerValue = Math.max(-1, Math.min(1, (gamma - this._baseGamma) / 25));
+    this._targetYaw = (gamma - this._baseGamma) * 0.4;
+  }
+
   private _onSensorReading() {
     const s = this._sensor;
     if (!s || !s.quaternion) return;
@@ -96,41 +130,38 @@ export class GyroCamera {
 
   start() {
     if (!this._hasPermission) return;
-    if (this._handler || this._sensor) return;
+    if (this._handler !== null || this._sensor !== null || this._motionHandler !== null) return;
 
     this.enabled = true;
-
     const win = window as any;
 
-    // 1) Android Chrome: Generic Sensor API (часто работает, когда DeviceOrientation — нет)
     if (typeof win.AbsoluteOrientationSensor === 'function') {
       try {
         const sensor = new win.AbsoluteOrientationSensor({ frequency: 30 });
         sensor.addEventListener('reading', () => this._onSensorReading());
         sensor.start();
         this._sensor = sensor;
-        this._source = 'sensor';
       } catch (_) {}
     }
 
-    // 2) DeviceOrientationEvent (iOS и часть Android)
-    if (!this._sensor) {
+    if (this._sensor === null) {
       this._handler = (e) => this._onOrientation(e);
       window.addEventListener('deviceorientation', this._handler);
-      this._source = 'deviceorientation';
-
       this._handlerAbsolute = (e) => this._onOrientation(e);
       try {
         window.addEventListener('deviceorientationabsolute', this._handlerAbsolute);
-        this._source = 'deviceorientationabsolute';
       } catch (_) {}
     }
+
+    this._motionHandler = (e) => this._onMotion(e);
+    window.addEventListener('devicemotion', this._motionHandler);
   }
 
   stop() {
     this.enabled = false;
     this._steerValue = 0;
     this._targetForward = 0;
+    this._motionActive = false;
 
     if (this._handler) {
       window.removeEventListener('deviceorientation', this._handler);
@@ -142,16 +173,18 @@ export class GyroCamera {
       } catch (_) {}
       this._handlerAbsolute = null;
     }
+    if (this._motionHandler) {
+      window.removeEventListener('devicemotion', this._motionHandler);
+      this._motionHandler = null;
+    }
     if (this._sensor) {
       try {
         this._sensor.stop();
       } catch (_) {}
       this._sensor = null;
     }
-    this._source = null;
   }
 
-  /** Reset current orientation as neutral (double-tap to recalibrate). */
   calibrate() {
     this._baseAlpha += this._targetYaw / 0.4;
     this._baseBeta += this._targetPitch / 0.4;
@@ -162,19 +195,16 @@ export class GyroCamera {
     this._targetForward = 0;
   }
 
-  /** Forward/right from tilt: tilt phone forward = go forward, tilt right = go right. */
   getMoveVector(): { forward: number; right: number } {
     if (!this.enabled) return { forward: 0, right: 0 };
     return { forward: this._targetForward, right: this._steerValue };
   }
 
-  /** Returns -1 (left) to 1 (right) tilt for steering. */
   getSteer(): number {
     if (!this.enabled) return 0;
     return this._steerValue;
   }
 
-  /** Apply gyro orientation to camera (for editor/play mode). */
   update(camera: Camera) {
     if (!this.enabled) return;
     camera.state.rotationY += (this._targetYaw - camera.state.rotationY) * EMA;
