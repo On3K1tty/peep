@@ -107,11 +107,11 @@ export function playSound(name: SoundName) {
       case 'place': {
         const o = c.createOscillator();
         const g = c.createGain();
-        o.type = 'triangle'; o.frequency.value = 300;
-        g.gain.setValueAtTime(0.1, now);
-        g.gain.linearRampToValueAtTime(0, now + 0.08);
+        o.type = 'sine'; o.frequency.value = 180;
+        g.gain.setValueAtTime(0.04, now);
+        g.gain.linearRampToValueAtTime(0, now + 0.14);
         o.connect(g).connect(c.destination);
-        o.start(now); o.stop(now + 0.08);
+        o.start(now); o.stop(now + 0.14);
         break;
       }
     }

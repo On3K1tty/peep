@@ -1,5 +1,5 @@
 {
-  "name": "voxel-dom",
+  "name": "peep",
   "version": "0.1.0",
   "description": "Ultra-light CSS/DOM 3D voxel engine for mobile browsers and mini-apps",
   "type": "module",

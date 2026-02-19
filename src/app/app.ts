@@ -6,29 +6,35 @@ import { TriggerRuntime, type TriggerEvent } from '../game/triggers';
 import { GyroCamera } from '../game/gyro';
 import { HUD } from '../game/hud';
 import { playSound } from '../game/sound';
+import { Race } from '../game/race';
 import { Editor } from '../editor/editor';
-import { saveGame, loadGame, loadGameTG, encodeForURL, decodeFromURL } from './storage';
-import { tgInit, tgHaptic, tgShare, tgBackButton, isTG } from './tg';
+import { saveGame, loadGame, encodeForURL, decodeFromURL } from './storage';
+import { tgInit, tgHaptic, tgShare, tgBackButton } from './tg';
 import { initLang, t } from './i18n';
 
-type AppMode = 'edit' | 'play';
+type AppMode = 'splash' | 'race' | 'edit' | 'play';
 
 export class App {
   private _container: HTMLElement;
   private _engine: Engine;
   private _world: World;
   private _mesh: WorldMesh;
-  private _editor: Editor;
+  private _editor!: Editor;
   private _player: Player | null = null;
   private _triggers: TriggerRuntime;
   private _gyro: GyroCamera;
   private _hud: HUD;
-  private _mode: AppMode = 'edit';
+  private _mode: AppMode = 'splash';
   private _jumpPressed = false;
   private _shootPressed = false;
   private _health = 3;
   private _maxHealth = 3;
   private _damageCooldown = 0;
+
+  // Splash + Race
+  private _splashEl: HTMLElement | null = null;
+  private _race: Race | null = null;
+  private _flashEl: HTMLElement;
 
   constructor(containerId: string) {
     initLang();
@@ -38,10 +44,15 @@ export class App {
     if (!container) throw new Error('Container not found');
     this._container = container;
 
+    // Flash overlay for transitions
+    this._flashEl = document.createElement('div');
+    this._flashEl.className = 'flash';
+    container.appendChild(this._flashEl);
+
     // World
     this._world = new World();
 
-    // Try loading saved game
+    // Check URL for shared game
     const urlData = new URLSearchParams(location.search).get('g');
     if (urlData) {
       const save = decodeFromURL(urlData);
@@ -53,204 +64,204 @@ export class App {
       else this._world.generateDefault();
     }
 
-    // Engine
+    // Engine (hidden initially, used for play mode)
     this._engine = new Engine({
       container: container,
       voxelSize: 16,
       perspective: 700,
     });
+    this._engine.renderer.root.style.display = 'none';
 
-    // World mesh
     this._mesh = new WorldMesh(16);
     this._engine.scene.add(this._mesh);
-    this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
 
     // Game systems
     this._triggers = new TriggerRuntime();
     this._gyro = new GyroCamera();
     this._hud = new HUD();
     container.appendChild(this._hud.el);
-
-    // Editor
-    this._editor = new Editor(this._world, container);
-    this._editor.onPlay = () => this.setMode('play');
-    this._editor.onSave = () => this._save();
-    this._editor.onShare = () => this._share();
-
-    // HUD callbacks
+    this._hud.el.style.display = 'none';
     this._hud.onJump = () => { this._jumpPressed = true; };
     this._hud.onShoot = () => { this._shootPressed = true; };
 
-    // Keyboard input for play mode
     this._engine.onUpdate((dt) => this._update(dt));
-
-    // Start
     this._engine.start();
-    this.setMode(urlData ? 'play' : 'edit');
+    this._engine.pause();
 
-    // TG back button
+    // If URL has game data, skip to play
+    if (urlData) {
+      this._initEditor();
+      this.setMode('play');
+    } else {
+      this._showSplash();
+    }
+
     tgBackButton(false);
   }
 
-  setMode(mode: AppMode) {
+  private _initEditor() {
+    if (this._editor) return;
+    this._editor = new Editor(this._world, this._container);
+    this._editor.onPlay = () => this.setMode('play');
+    this._editor.onSave = () => this._save();
+    this._editor.onShare = () => this._share();
+    this._editor.setVisible(false);
+  }
+
+  // ── Splash ──
+
+  private _showSplash() {
+    this._mode = 'splash';
+    this._container.className = 'mode-splash';
+
+    this._splashEl = document.createElement('div');
+    this._splashEl.className = 'splash';
+    this._splashEl.innerHTML =
+      '<div class="splash-title">PEEP</div>' +
+      '<div class="splash-sub">wheelchair racer</div>' +
+      '<button class="splash-start">START</button>';
+    this._container.appendChild(this._splashEl);
+
+    this._splashEl.querySelector('.splash-start')!.addEventListener('click', () => {
+      playSound('click');
+      this._startRace();
+    });
+  }
+
+  // ── Race ──
+
+  private _startRace() {
+    if (this._splashEl) { this._splashEl.remove(); this._splashEl = null; }
+    this._mode = 'race';
+    this._container.className = 'mode-race';
+
+    this._race = new Race(this._container);
+    this._race.onFinish = (won) => {
+      // White flash -> transition to editor
+      this._flashEl.classList.add('on');
+      setTimeout(() => {
+        this._race?.destroy();
+        this._race = null;
+        this._initEditor();
+        this.setMode('edit');
+        // Fade flash out
+        setTimeout(() => this._flashEl.classList.remove('on'), 300);
+      }, 1000);
+    };
+    this._race.start();
+  }
+
+  // ── Mode switching ──
+
+  setMode(mode: 'edit' | 'play') {
     this._mode = mode;
     this._container.className = mode === 'edit' ? 'mode-edit' : 'mode-play';
 
     if (mode === 'edit') {
+      this._initEditor();
       this._editor.setVisible(true);
       this._editor.refresh();
       this._hud.setDpadVisible(false);
       this._hud.showMessage('');
       this._hud.el.style.display = 'none';
       this._player = null;
-
-      // Switch camera back to orbit for editor
       this._engine.camera.mode = 'orbit';
       this._engine.renderer.root.style.display = 'none';
       this._engine.pause();
-
       this._gyro.stop();
       tgBackButton(false);
     } else {
-      this._editor.setVisible(false);
+      this._editor?.setVisible(false);
       this._hud.el.style.display = '';
       this._hud.setDpadVisible(true);
       this._hud.showMessage('');
-      this._hud.setScore(0);
-
-      // Show main renderer for play mode
       this._engine.renderer.root.style.display = '';
       this._engine.resume();
-
       this._player = new Player(this._world);
       this._triggers.reset();
       this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
-
       this._health = this._maxHealth;
       this._damageCooldown = 0;
-
-      // FPS camera: first person
       this._engine.camera.mode = 'fly';
       this._engine.camera.state.rotationX = 0;
       this._engine.camera.state.rotationY = 0;
       const sp = this._world.findSpawn();
       this._engine.camera.state.position.set(sp[0] + 0.5, sp[1] + 1.5, sp[2] + 0.5);
-
-      // Try enabling gyro
       this._gyro.requestPermission().then(ok => { if (ok) this._gyro.start(); });
-
       tgBackButton(true, () => this.setMode('edit'));
     }
   }
 
-  private _update(dt: number) {
-    if (this._mode === 'edit') {
-      this._processEditInput();
-      return;
-    }
+  // ── Play mode update ──
 
-    // ── Play Mode ──
+  private _update(dt: number) {
+    if (this._mode !== 'play') return;
+
     const p = this._player;
     if (!p) return;
 
-    // Input
     const keys = this._engine.input.state.keys;
     const dpad = this._hud.getMoveInput();
-    let forward = dpad.forward;
-    let right = dpad.right;
-
-    if (keys.has('KeyW') || keys.has('ArrowUp'))    forward += 1;
-    if (keys.has('KeyS') || keys.has('ArrowDown'))  forward -= 1;
-    if (keys.has('KeyA') || keys.has('ArrowLeft'))   right -= 1;
-    if (keys.has('KeyD') || keys.has('ArrowRight'))  right += 1;
+    let forward = dpad.forward, right = dpad.right;
+    if (keys.has('KeyW') || keys.has('ArrowUp')) forward += 1;
+    if (keys.has('KeyS') || keys.has('ArrowDown')) forward -= 1;
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) right -= 1;
+    if (keys.has('KeyD') || keys.has('ArrowRight')) right += 1;
 
     const jump = this._jumpPressed || keys.has('Space');
     this._jumpPressed = false;
 
-    // Camera drag -> player yaw
     const { deltaX, deltaY, pinchDelta } = this._engine.input.state;
     if (deltaX) this._engine.camera.orbit(deltaX * 0.3, 0);
     if (deltaY) this._engine.camera.orbit(0, deltaY * 0.3);
     if (pinchDelta) this._engine.camera.zoom(pinchDelta * 2);
     this._engine.input.resetDeltas();
 
-    // FPS: camera yaw drives player direction
     p.state.yaw = this._engine.camera.state.rotationY * (Math.PI / 180);
-
-    // Gyroscope
     this._gyro.update(this._engine.camera);
 
-    // Player physics
     const sfx = p.move(forward, right, jump, dt);
-    if (sfx) {
-      playSound(sfx as any);
-      tgHaptic(sfx === 'hit' ? 'heavy' : 'light');
-    }
+    if (sfx) { playSound(sfx as any); tgHaptic(sfx === 'hit' ? 'heavy' : 'light'); }
 
-    // Shooting
-    if (this._shootPressed) {
-      this._shootPressed = false;
-      this._shoot();
-    }
+    if (this._shootPressed) { this._shootPressed = false; this._shoot(); }
 
-    // Triggers
-    const events = this._triggers.evaluate(
-      this._world.triggers, p.state, this._world, dt,
-    );
+    const events = this._triggers.evaluate(this._world.triggers, p.state, this._world, dt);
     this._handleEvents(events);
 
-    // FPS camera: position = player eyes
     const cam = this._engine.camera.state;
     cam.position.x = p.state.x;
     cam.position.y = p.state.y + 1.5;
     cam.position.z = p.state.z;
 
-    // Damage cooldown
     if (this._damageCooldown > 0) this._damageCooldown -= dt;
-
-    // Health-based damage (instead of instant death)
     if (!p.state.alive && this._health > 0 && this._damageCooldown <= 0) {
       this._health--;
       this._damageCooldown = 1.0;
-      if (this._health > 0) {
-        p.state.alive = true;
-        playSound('hit');
-        tgHaptic('heavy');
-      }
+      if (this._health > 0) { p.state.alive = true; playSound('hit'); tgHaptic('heavy'); }
     }
 
-    // HUD
-    this._hud.setScore(p.state.score);
     this._hud.el.querySelector('.hud-top')!.innerHTML =
       `<span class="hud-score">${p.state.score}</span> &nbsp; ${'&#9829;'.repeat(this._health)}${'&#9825;'.repeat(this._maxHealth - this._health)}`;
 
-    // Death / Win
     if (!p.state.alive && this._health <= 0) {
       this._hud.showMessage(`${t('you_died')} ${t('tap_retry')}`);
-      this._waitForTap(() => {
-        p.respawn();
-        this._hud.showMessage('');
-        this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
-      });
+      this._waitForTap(() => { p.respawn(); this._health = this._maxHealth; this._hud.showMessage(''); this._mesh.rebuildFromGrid(this._world.grid, this._world.palette); });
     } else if (p.state.won) {
       this._hud.showMessage(t('you_win'));
       this._waitForTap(() => this.setMode('edit'));
     }
   }
 
-  /** Raycast from player eyes forward, destroy first block hit */
   private _shoot() {
     const p = this._player;
     if (!p) return;
     playSound('hit');
     tgHaptic('medium');
-
     const yaw = this._engine.camera.state.rotationY * (Math.PI / 180);
     const pitch = this._engine.camera.state.rotationX * (Math.PI / 180);
     const dx = -Math.sin(yaw) * Math.cos(pitch);
     const dy = Math.sin(pitch);
     const dz = Math.cos(yaw) * Math.cos(pitch);
-
     let rx = p.state.x, ry = p.state.y + 1.5, rz = p.state.z;
     for (let i = 0; i < 50; i++) {
       rx += dx * 0.3; ry += dy * 0.3; rz += dz * 0.3;
@@ -264,54 +275,31 @@ export class App {
     }
   }
 
-  private _processEditInput() {
-    this._engine.input.resetDeltas();
-  }
-
   private _handleEvents(events: TriggerEvent[]) {
     for (const evt of events) {
-      switch (evt.type) {
-        case 'text':
-          this._hud.toast(evt.text, 3000);
-          break;
-        case 'sound':
-          playSound(evt.sound as any);
-          break;
-        case 'win':
-          playSound('win');
-          break;
-        case 'lose':
-          playSound('lose');
-          break;
-        case 'teleport':
-          playSound('pickup');
-          break;
-      }
+      if (evt.type === 'text') this._hud.toast(evt.text, 3000);
+      else if (evt.type === 'sound') playSound(evt.sound as any);
+      else if (evt.type === 'win') playSound('win');
+      else if (evt.type === 'lose') playSound('lose');
+      else if (evt.type === 'teleport') playSound('pickup');
     }
-    // If triggers modified the world, rebuild mesh
-    if (events.some(e => e.type === 'sound' && e.sound === 'explode')) {
+    if (events.some(e => e.type === 'sound' && e.sound === 'explode'))
       this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
-    }
   }
 
   private _waitForTap(cb: () => void) {
-    const handler = () => {
-      document.removeEventListener('pointerdown', handler);
-      cb();
-    };
+    const handler = () => { document.removeEventListener('pointerdown', handler); cb(); };
     setTimeout(() => document.addEventListener('pointerdown', handler), 500);
   }
 
   private _save() {
-    const save = this._world.serialize();
-    const ok = saveGame(save);
+    const ok = saveGame(this._world.serialize());
     this._hud.toast(ok ? t('saved') : t('save_fail'), 1500);
     playSound('pickup');
   }
 
   private _share() {
-    const save = this._world.serialize();
-    const encoded = encodeForURL(save);
+    const encoded = encodeForURL(this._world.serialize());
     const url = `${location.origin}${location.pathname}?g=${encoded}`;
     tgShare(url);
     this._hud.toast(t('link_copied'), 1500);
