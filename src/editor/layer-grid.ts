@@ -50,6 +50,7 @@ export class LayerGrid {
     this.canvas.width = CANVAS_SIZE;
     this.canvas.height = CANVAS_SIZE;
     this.canvas.className = 'layer-grid-canvas';
+    this.canvas.style.display = 'none';
 
     this.el.appendChild(header);
     this.el.appendChild(this.canvas);

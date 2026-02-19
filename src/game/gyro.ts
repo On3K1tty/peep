@@ -10,6 +10,7 @@ export class GyroCamera {
   private _targetYaw = 0;
   private _targetPitch = 0;
   private _steerValue = 0;
+  private _targetForward = 0;
   private _hasPermission = false;
   private _handler: ((e: DeviceOrientationEvent) => void) | null = null;
 
@@ -49,8 +50,9 @@ export class GyroCamera {
       if (e.alpha == null || e.beta == null) return;
       this._targetYaw = (e.alpha - this._baseAlpha) * 0.4;
       this._targetPitch = (e.beta - this._baseBeta) * 0.4;
+      this._targetForward = Math.max(-1, Math.min(1, (e.beta - this._baseBeta) * 0.025));
       if (e.gamma != null) {
-        this._steerValue = Math.max(-1, Math.min(1, (e.gamma - this._baseGamma) / 30));
+        this._steerValue = Math.max(-1, Math.min(1, (e.gamma - this._baseGamma) / 25));
       }
     };
     window.addEventListener('deviceorientation', this._handler);
@@ -59,23 +61,31 @@ export class GyroCamera {
   stop() {
     this.enabled = false;
     this._steerValue = 0;
+    this._targetForward = 0;
     if (this._handler) {
       window.removeEventListener('deviceorientation', this._handler);
       this._handler = null;
     }
   }
 
-  /** Reset current orientation as neutral. */
+  /** Reset current orientation as neutral (double-tap to recalibrate). */
   calibrate() {
     this._baseAlpha += this._targetYaw / 0.4;
     this._baseBeta += this._targetPitch / 0.4;
-    this._baseGamma += this._steerValue * 30;
+    this._baseGamma += this._steerValue * 25;
     this._targetYaw = 0;
     this._targetPitch = 0;
     this._steerValue = 0;
+    this._targetForward = 0;
   }
 
-  /** Returns -1 (left) to 1 (right) tilt for race steering. */
+  /** Forward/right from tilt: tilt phone forward = go forward, tilt right = go right. */
+  getMoveVector(): { forward: number; right: number } {
+    if (!this.enabled) return { forward: 0, right: 0 };
+    return { forward: this._targetForward, right: this._steerValue };
+  }
+
+  /** Returns -1 (left) to 1 (right) tilt for steering. */
   getSteer(): number {
     if (!this.enabled) return 0;
     return this._steerValue;

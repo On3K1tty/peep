@@ -6,13 +6,12 @@ import { TriggerRuntime, type TriggerEvent } from '../game/triggers';
 import { GyroCamera } from '../game/gyro';
 import { HUD } from '../game/hud';
 import { playSound } from '../game/sound';
-import { Race } from '../game/race';
 import { Editor } from '../editor/editor';
 import { saveGame, loadGame, encodeForURL, decodeFromURL } from './storage';
 import { tgInit, tgHaptic, tgShare, tgBackButton } from './tg';
 import { initLang, t } from './i18n';
 
-type AppMode = 'splash' | 'race' | 'edit' | 'play';
+type AppMode = 'edit' | 'play';
 
 export class App {
   private _container: HTMLElement;
@@ -24,19 +23,16 @@ export class App {
   private _triggers: TriggerRuntime;
   private _gyro: GyroCamera;
   private _hud: HUD;
-  private _mode: AppMode = 'splash';
+  private _mode: AppMode = 'edit';
   private _jumpPressed = false;
-  private _shootPressed = false;
   private _health = 3;
   private _maxHealth = 3;
   private _damageCooldown = 0;
 
-  // Splash + Race
-  private _splashEl: HTMLElement | null = null;
-  private _race: Race | null = null;
   private _flashEl: HTMLElement;
   private _gyroBtn: HTMLElement;
   private _lastTapTime = 0;
+  private _exitPlayBtn: HTMLElement;
 
   constructor(containerId: string) {
     initLang();
@@ -84,7 +80,6 @@ export class App {
     container.appendChild(this._hud.el);
     this._hud.el.style.display = 'none';
     this._hud.onJump = () => { this._jumpPressed = true; };
-    this._hud.onShoot = () => { this._shootPressed = true; };
 
     this._engine.onUpdate((dt) => this._update(dt));
     this._engine.start();
@@ -111,12 +106,21 @@ export class App {
       }
     });
 
-    // If URL has game data, skip to play
+    // Exit play button (visible in play mode)
+    this._exitPlayBtn = document.createElement('button');
+    this._exitPlayBtn.className = 'exit-play-btn';
+    this._exitPlayBtn.type = 'button';
+    this._exitPlayBtn.textContent = '← ' + (t('back') || 'Выйти');
+    this._exitPlayBtn.addEventListener('click', () => this.setMode('edit'));
+    container.appendChild(this._exitPlayBtn);
+    this._exitPlayBtn.style.display = 'none';
+
     if (urlData) {
       this._initEditor();
       this.setMode('play');
     } else {
-      this._showSplash();
+      this._initEditor();
+      this.setMode('edit');
     }
 
     tgBackButton(false);
@@ -161,7 +165,10 @@ export class App {
     this._race = new Race(this._container, () => this._gyro.getSteer());
     this._race.onFinish = (won) => {
       this._flashEl.classList.add('on');
-      const removeFlash = () => this._flashEl.classList.remove('on');
+      const removeFlash = () => {
+        this._flashEl.classList.remove('on');
+        this._flashEl.style.opacity = '0';
+      };
       // Guaranteed: remove white overlay 2.5s after flash (even if transition fails)
       setTimeout(removeFlash, 2500);
       setTimeout(() => {
@@ -181,7 +188,7 @@ export class App {
           this._engine.pause();
           this._gyro.stop();
           tgBackButton(false);
-          removeFlash();
+          requestAnimationFrame(() => removeFlash());
         } catch (e) {
           removeFlash();
           this._mode = 'edit';
@@ -202,19 +209,19 @@ export class App {
       this._initEditor();
       this._editor.setVisible(true);
       this._editor.refresh();
-      this._hud.setDpadVisible(false);
-      this._hud.showMessage('');
       this._hud.el.style.display = 'none';
+      this._exitPlayBtn.style.display = 'none';
       this._player = null;
       this._engine.camera.mode = 'orbit';
       this._engine.renderer.root.style.display = 'none';
       this._engine.pause();
       this._gyro.stop();
       tgBackButton(false);
+      this._gyro.requestPermission().then(ok => { if (ok) this._gyro.start(); });
     } else {
       this._editor?.setVisible(false);
       this._hud.el.style.display = '';
-      this._hud.setDpadVisible(true);
+      this._exitPlayBtn.style.display = 'block';
       this._hud.showMessage('');
       this._engine.renderer.root.style.display = '';
       this._engine.resume();
@@ -241,20 +248,13 @@ export class App {
     const p = this._player;
     if (!p) return;
 
-    const keys = this._engine.input.state.keys;
-    const dpad = this._hud.getMoveInput();
-    let forward = dpad.forward, right = dpad.right;
-    if (keys.has('KeyW') || keys.has('ArrowUp')) forward += 1;
-    if (keys.has('KeyS') || keys.has('ArrowDown')) forward -= 1;
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) right -= 1;
-    if (keys.has('KeyD') || keys.has('ArrowRight')) right += 1;
-
-    const jump = this._jumpPressed || keys.has('Space');
+    const move = this._gyro.getMoveVector();
+    const forward = move.forward;
+    const right = move.right;
+    const jump = this._jumpPressed || this._engine.input.state.keys.has('Space');
     this._jumpPressed = false;
 
-    const { deltaX, deltaY, pinchDelta } = this._engine.input.state;
-    if (deltaX) this._engine.camera.orbit(deltaX * 0.3, 0);
-    if (deltaY) this._engine.camera.orbit(0, deltaY * 0.3);
+    const { pinchDelta } = this._engine.input.state;
     if (pinchDelta) this._engine.camera.zoom(pinchDelta * 2);
     this._engine.input.resetDeltas();
 
@@ -263,8 +263,6 @@ export class App {
 
     const sfx = p.move(forward, right, jump, dt);
     if (sfx) { playSound(sfx as any); tgHaptic(sfx === 'hit' ? 'heavy' : 'light'); }
-
-    if (this._shootPressed) { this._shootPressed = false; this._shoot(); }
 
     const events = this._triggers.evaluate(this._world.triggers, p.state, this._world, dt);
     this._handleEvents(events);
@@ -290,29 +288,6 @@ export class App {
     } else if (p.state.won) {
       this._hud.showMessage(t('you_win'));
       this._waitForTap(() => this.setMode('edit'));
-    }
-  }
-
-  private _shoot() {
-    const p = this._player;
-    if (!p) return;
-    playSound('hit');
-    tgHaptic('medium');
-    const yaw = this._engine.camera.state.rotationY * (Math.PI / 180);
-    const pitch = this._engine.camera.state.rotationX * (Math.PI / 180);
-    const dx = -Math.sin(yaw) * Math.cos(pitch);
-    const dy = Math.sin(pitch);
-    const dz = Math.cos(yaw) * Math.cos(pitch);
-    let rx = p.state.x, ry = p.state.y + 1.5, rz = p.state.z;
-    for (let i = 0; i < 50; i++) {
-      rx += dx * 0.3; ry += dy * 0.3; rz += dz * 0.3;
-      const bx = Math.floor(rx), by = Math.floor(ry), bz = Math.floor(rz);
-      if (this._world.isSolid(bx, by, bz)) {
-        this._world.clear(bx, by, bz);
-        this._mesh.rebuildFromGrid(this._world.getGridForDisplay(true), this._world.palette, WORLD_SX, WORLD_SY, WORLD_SZ);
-        playSound('explode');
-        return;
-      }
     }
   }
 

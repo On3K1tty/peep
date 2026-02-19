@@ -1,6 +1,7 @@
 import { Camera, Renderer } from '../engine/renderer';
 import { WorldMesh } from '../engine/voxel';
 import { World, WORLD_SX, WORLD_SY, WORLD_SZ } from '../game/world';
+import type { GyroCamera } from '../game/gyro';
 import { Palette } from './palette';
 import { LayerGrid } from './layer-grid';
 import { TriggerEditor } from './trigger-ui';
@@ -46,13 +47,15 @@ export class Editor {
   // Drag state for orbit vs click detection
   private _dragDist = 0;
   private _longPressTimer = 0;
+  private _gyro?: GyroCamera;
 
   onPlay?: () => void;
   onSave?: () => void;
   onShare?: () => void;
 
-  constructor(world: World, container: HTMLElement) {
+  constructor(world: World, container: HTMLElement, gyro?: GyroCamera) {
     this._world = world;
+    this._gyro = gyro;
 
     // Undo/Redo
     this._sidePanel = document.createElement('div');
@@ -102,8 +105,9 @@ export class Editor {
     };
     container.appendChild(this.layerGrid.el);
 
-    // Render loop
+    // Render loop (gyro drives camera when enabled)
     const renderLoop = () => {
+      if (this._gyro?.enabled) this._gyro.update(this._cam);
       this._renderer.render();
       requestAnimationFrame(renderLoop);
     };

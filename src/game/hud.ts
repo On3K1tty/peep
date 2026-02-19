@@ -8,69 +8,25 @@ export class HUD {
   private _crosshair: HTMLElement;
 
   onJump?: () => void;
-  onShoot?: () => void;
 
   constructor() {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML =
       '<div class="hud-top"><span class="hud-score">0</span></div>' +
-      '<div class="hud-crosshair">+</div>' +
       '<div class="hud-msg"></div>' +
       '<div class="hud-toast"></div>' +
-      '<div class="hud-dpad">' +
-        '<button class="dp dp-u" data-d="u">&#9650;</button>' +
-        '<button class="dp dp-l" data-d="l">&#9664;</button>' +
-        '<button class="dp dp-r" data-d="r">&#9654;</button>' +
-        '<button class="dp dp-d" data-d="d">&#9660;</button>' +
-        '<button class="dp dp-j" data-d="j">&#8679;</button>' +
-      '</div>' +
-      '<button class="hud-shoot">&#9678;</button>';
+      '<button class="hud-jump" type="button">&#8679;</button>';
 
     this._msg = this.el.querySelector('.hud-msg')!;
     this._toast = this.el.querySelector('.hud-toast')!;
-    this._dpad = this.el.querySelector('.hud-dpad')!;
-    this._shootBtn = this.el.querySelector('.hud-shoot')!;
-    this._crosshair = this.el.querySelector('.hud-crosshair')!;
+    this._dpad = this.el; // unused, keep for setDpadVisible no-op
+    this._shootBtn = this.el;
+    this._crosshair = this.el;
 
-    this._bindDpad();
-    this._shootBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this.onShoot?.(); }, { passive: false });
-    this._shootBtn.addEventListener('mousedown', (e) => { e.preventDefault(); this.onShoot?.(); });
-  }
-
-  private _moveState = { u: false, d: false, l: false, r: false };
-
-  private _bindDpad() {
-    const start = (e: Event) => {
-      e.preventDefault();
-      const d = (e.target as HTMLElement).dataset.d;
-      if (!d) return;
-      if (d === 'j') { this.onJump?.(); return; }
-      (this._moveState as any)[d] = true;
-    };
-    const end = (e: Event) => {
-      e.preventDefault();
-      const d = (e.target as HTMLElement).dataset.d;
-      if (d && d !== 'j') (this._moveState as any)[d] = false;
-    };
-
-    this._dpad.addEventListener('touchstart', start, { passive: false });
-    this._dpad.addEventListener('touchend', end, { passive: false });
-    this._dpad.addEventListener('mousedown', start);
-    this._dpad.addEventListener('mouseup', end);
-    this._dpad.addEventListener('mouseleave', end);
-  }
-
-  getMoveInput(): { forward: number; right: number } {
-    const m = this._moveState;
-    return {
-      forward: (m.u ? 1 : 0) - (m.d ? 1 : 0),
-      right: (m.r ? 1 : 0) - (m.l ? 1 : 0),
-    };
-  }
-
-  setScore(n: number) {
-    // Score is now set via innerHTML from app.ts (includes hearts)
+    const jumpBtn = this.el.querySelector('.hud-jump')!;
+    jumpBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this.onJump?.(); }, { passive: false });
+    jumpBtn.addEventListener('mousedown', (e) => { e.preventDefault(); this.onJump?.(); });
   }
 
   showMessage(text: string) {
@@ -87,10 +43,8 @@ export class HUD {
     }, durationMs);
   }
 
-  setDpadVisible(v: boolean) {
-    this._dpad.style.display = v ? 'flex' : 'none';
-    this._shootBtn.style.display = v ? 'flex' : 'none';
-    this._crosshair.style.display = v ? 'block' : 'none';
+  setDpadVisible(_v: boolean) {
+    // Movement is gyro-only; jump button visibility unchanged
   }
 
   destroy() {
