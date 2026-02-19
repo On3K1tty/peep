@@ -16,40 +16,49 @@ const CONFIGS: {
 ];
 
 /**
- * Greedy meshing directly from a flat grid (Uint8Array) + palette.
- * grid[x + y*S + z*S*S] = palette index (0 = air).
- * Much faster than VoxelData[] version — zero allocations for intermediate objects.
+ * Greedy meshing from a flat grid (Uint8Array) + palette.
+ * grid[x + y*sx + z*sx*sy] = palette index (0 = air).
+ * sx, sy, sz: dimensions (default cubic 32).
  */
 export function greedyMeshGrid(
   grid: Uint8Array,
   palette: string[],
-  S = 32,
+  sx: number,
+  sy?: number,
+  sz?: number,
 ): MergedFace[] {
+  const Sx = sx;
+  const Sy = sy ?? sx;
+  const Sz = sz ?? sx;
+  const S2 = Sx * Sy;
   const result: MergedFace[] = [];
-  const S2 = S * S;
+
+  const dims = [Sx, Sy, Sz] as const;
 
   function idx(x: number, y: number, z: number): number {
-    return x + y * S + z * S2;
+    return x + y * Sx + z * S2;
   }
 
   function solid(x: number, y: number, z: number): boolean {
-    if (x < 0 || x >= S || y < 0 || y >= S || z < 0 || z >= S) return false;
+    if (x < 0 || x >= Sx || y < 0 || y >= Sy || z < 0 || z >= Sz) return false;
     return grid[idx(x, y, z)] !== 0;
   }
 
   function getColor(x: number, y: number, z: number): number {
-    if (x < 0 || x >= S || y < 0 || y >= S || z < 0 || z >= S) return 0;
+    if (x < 0 || x >= Sx || y < 0 || y >= Sy || z < 0 || z >= Sz) return 0;
     return grid[idx(x, y, z)];
   }
 
-  const mask = new Int32Array(S * S);
+  const maskSize = Math.max(Sx * Sy, Sx * Sz, Sy * Sz);
+  const mask = new Int32Array(maskSize);
 
   for (const cfg of CONFIGS) {
-    for (let a = 0; a < S; a++) {
+    const axisLen = dims[cfg.axis];
+    for (let a = 0; a < axisLen; a++) {
       mask.fill(0);
 
-      for (let vi = 0; vi < S; vi++) {
-        for (let ui = 0; ui < S; ui++) {
+      for (let vi = 0; vi < dims[cfg.v]; vi++) {
+        for (let ui = 0; ui < dims[cfg.u]; ui++) {
           const coords = [0, 0, 0];
           coords[cfg.axis] = a;
           coords[cfg.u] = ui;
@@ -64,30 +73,32 @@ export function greedyMeshGrid(
           nb[cfg.v] = vi;
           if (solid(nb[0], nb[1], nb[2])) continue;
 
-          mask[vi * S + ui] = ci;
+          mask[vi * dims[cfg.u] + ui] = ci;
         }
       }
 
-      for (let vi = 0; vi < S; vi++) {
-        for (let ui = 0; ui < S;) {
-          const ci = mask[vi * S + ui];
+      const Su = dims[cfg.u];
+      const Sv = dims[cfg.v];
+      for (let vi = 0; vi < Sv; vi++) {
+        for (let ui = 0; ui < Su;) {
+          const ci = mask[vi * Su + ui];
           if (ci === 0) { ui++; continue; }
 
           let w = 1;
-          while (ui + w < S && mask[vi * S + ui + w] === ci) w++;
+          while (ui + w < Su && mask[vi * Su + ui + w] === ci) w++;
 
           let h = 1;
           let done = false;
-          while (vi + h < S && !done) {
+          while (vi + h < Sv && !done) {
             for (let k = 0; k < w; k++) {
-              if (mask[(vi + h) * S + ui + k] !== ci) { done = true; break; }
+              if (mask[(vi + h) * Su + ui + k] !== ci) { done = true; break; }
             }
             if (!done) h++;
           }
 
           for (let dv = 0; dv < h; dv++)
             for (let du = 0; du < w; du++)
-              mask[(vi + dv) * S + ui + du] = 0;
+              mask[(vi + dv) * Su + ui + du] = 0;
 
           const coords = [0, 0, 0];
           coords[cfg.axis] = a;

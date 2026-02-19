@@ -1,6 +1,6 @@
 import { Engine } from '../engine/engine';
 import { WorldMesh } from '../engine/voxel';
-import { World } from '../game/world';
+import { World, WORLD_SX, WORLD_SY, WORLD_SZ } from '../game/world';
 import { Player } from '../game/player';
 import { TriggerRuntime, type TriggerEvent } from '../game/triggers';
 import { GyroCamera } from '../game/gyro';
@@ -35,6 +35,8 @@ export class App {
   private _splashEl: HTMLElement | null = null;
   private _race: Race | null = null;
   private _flashEl: HTMLElement;
+  private _gyroBtn: HTMLElement;
+  private _lastTapTime = 0;
 
   constructor(containerId: string) {
     initLang();
@@ -88,6 +90,27 @@ export class App {
     this._engine.start();
     this._engine.pause();
 
+    // Gyro toggle (visible in race + editor)
+    this._gyroBtn = document.createElement('button');
+    this._gyroBtn.className = 'gyro-btn off';
+    this._gyroBtn.type = 'button';
+    this._gyroBtn.setAttribute('aria-label', 'Gyro');
+    this._gyroBtn.innerHTML = '<span class="gyro-icon"></span>';
+    this._gyroBtn.addEventListener('click', () => this._onGyroToggle());
+    container.appendChild(this._gyroBtn);
+
+    // Double-tap anywhere = recalibrate gyro
+    container.addEventListener('pointerdown', (e) => {
+      const now = Date.now();
+      if (now - this._lastTapTime < 400) {
+        this._gyro.calibrate();
+        this._lastTapTime = 0;
+        tgHaptic('light');
+      } else {
+        this._lastTapTime = now;
+      }
+    });
+
     // If URL has game data, skip to play
     if (urlData) {
       this._initEditor();
@@ -135,7 +158,7 @@ export class App {
     this._mode = 'race';
     this._container.className = 'mode-race';
 
-    this._race = new Race(this._container);
+    this._race = new Race(this._container, () => this._gyro.getSteer());
     this._race.onFinish = (won) => {
       // White flash -> transition to editor
       this._flashEl.classList.add('on');
@@ -179,7 +202,7 @@ export class App {
       this._engine.resume();
       this._player = new Player(this._world);
       this._triggers.reset();
-      this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
+      this._mesh.rebuildFromGrid(this._world.getGridForDisplay(true), this._world.palette, WORLD_SX, WORLD_SY, WORLD_SZ);
       this._health = this._maxHealth;
       this._damageCooldown = 0;
       this._engine.camera.mode = 'fly';
@@ -245,7 +268,7 @@ export class App {
 
     if (!p.state.alive && this._health <= 0) {
       this._hud.showMessage(`${t('you_died')} ${t('tap_retry')}`);
-      this._waitForTap(() => { p.respawn(); this._health = this._maxHealth; this._hud.showMessage(''); this._mesh.rebuildFromGrid(this._world.grid, this._world.palette); });
+      this._waitForTap(() => { p.respawn(); this._health = this._maxHealth; this._hud.showMessage(''); this._mesh.rebuildFromGrid(this._world.getGridForDisplay(true), this._world.palette, WORLD_SX, WORLD_SY, WORLD_SZ); });
     } else if (p.state.won) {
       this._hud.showMessage(t('you_win'));
       this._waitForTap(() => this.setMode('edit'));
@@ -268,7 +291,7 @@ export class App {
       const bx = Math.floor(rx), by = Math.floor(ry), bz = Math.floor(rz);
       if (this._world.isSolid(bx, by, bz)) {
         this._world.clear(bx, by, bz);
-        this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
+        this._mesh.rebuildFromGrid(this._world.getGridForDisplay(true), this._world.palette, WORLD_SX, WORLD_SY, WORLD_SZ);
         playSound('explode');
         return;
       }
@@ -284,12 +307,19 @@ export class App {
       else if (evt.type === 'teleport') playSound('pickup');
     }
     if (events.some(e => e.type === 'sound' && e.sound === 'explode'))
-      this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
+      this._mesh.rebuildFromGrid(this._world.getGridForDisplay(true), this._world.palette, WORLD_SX, WORLD_SY, WORLD_SZ);
   }
 
   private _waitForTap(cb: () => void) {
     const handler = () => { document.removeEventListener('pointerdown', handler); cb(); };
     setTimeout(() => document.addEventListener('pointerdown', handler), 500);
+  }
+
+  private async _onGyroToggle() {
+    const on = await this._gyro.toggle();
+    this._gyroBtn.classList.toggle('on', on);
+    this._gyroBtn.classList.toggle('off', !on);
+    tgHaptic('light');
   }
 
   private _save() {

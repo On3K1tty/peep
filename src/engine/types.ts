@@ -47,7 +47,8 @@ export const ROLE_NAMES = ['solid', 'deadly', 'bouncy', 'pickup', 'spawn', 'fini
 
 export interface GameSave {
   v: 1;
-  size: number;
+  /** Cubic: number (e.g. 32). Rectangular: [sx, sy, sz] (e.g. [128, 32, 128]). */
+  size: number | [number, number, number];
   grid: number[];    // RLE-compressed block indices
   roles: number[];   // RLE-compressed roles
   palette: string[]; // color hex strings

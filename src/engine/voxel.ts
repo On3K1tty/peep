@@ -31,8 +31,8 @@ export class WorldMesh implements SceneNode {
 
   get faceCount() { return this._faceCount; }
 
-  rebuildFromGrid(grid: Uint8Array, palette: string[], size = 32) {
-    const faces = greedyMeshGrid(grid, palette, size);
+  rebuildFromGrid(grid: Uint8Array, palette: string[], sx: number, sy?: number, sz?: number) {
+    const faces = greedyMeshGrid(grid, palette, sx, sy, sz);
     this._faceCount = faces.length;
 
     for (const el of this._faceEls) el.remove();

@@ -1,21 +1,26 @@
 import { BlockRole } from '../engine/types';
 import type { TriggerDef, GameSave } from '../engine/types';
 
-export const WORLD_SIZE = 32;
-const S = WORLD_SIZE;
-const S2 = S * S;
-const S3 = S * S * S;
+/** 32x32x32 cap per level per plan; chain via portals for larger worlds */
+export const WORLD_SX = 32;
+export const WORLD_SY = 32;
+export const WORLD_SZ = 32;
+const SX = WORLD_SX;
+const SY = WORLD_SY;
+const SZ = WORLD_SZ;
+const S2 = SX * SY;
+const S3 = SX * SY * SZ;
 
 export const DEFAULT_PALETTE = [
-  '',          // 0 = air (unused slot)
+  '',          // 0 = air
   '#4CAF50',   // 1 grass
   '#795548',   // 2 dirt
   '#9E9E9E',   // 3 stone
-  '#F44336',   // 4 red (deadly/lava)
-  '#2196F3',   // 5 blue (water/bouncy)
-  '#FFEB3B',   // 6 yellow (pickup/coin)
+  '#F44336',   // 4 red
+  '#2196F3',   // 5 blue
+  '#FFEB3B',   // 6 yellow
   '#FF9800',   // 7 orange
-  '#9C27B0',   // 8 purple (portal)
+  '#9C27B0',   // 8 purple
   '#FFFFFF',   // 9 white
   '#212121',   // 10 black
   '#E91E63',   // 11 pink
@@ -34,7 +39,7 @@ export class World {
   portalTargets: Record<string, [number, number, number]> = {};
   name = 'Untitled';
 
-  private _spawnPos: [number, number, number] = [16, 20, 16];
+  private _spawnPos: [number, number, number] = [16, 16, 16];
 
   constructor() {
     this.grid = new Uint8Array(S3);
@@ -43,21 +48,22 @@ export class World {
   }
 
   private _idx(x: number, y: number, z: number): number {
-    return x + y * S + z * S2;
+    return x + y * SX + z * S2;
   }
 
+  /** Returns palette index; out-of-bounds = 1 (solid) for boundary collision */
   get(x: number, y: number, z: number): number {
-    if (x < 0 || x >= S || y < 0 || y >= S || z < 0 || z >= S) return 0;
+    if (x < 0 || x >= SX || y < 0 || y >= SY || z < 0 || z >= SZ) return 1;
     return this.grid[this._idx(x, y, z)];
   }
 
   getRole(x: number, y: number, z: number): number {
-    if (x < 0 || x >= S || y < 0 || y >= S || z < 0 || z >= S) return 0;
+    if (x < 0 || x >= SX || y < 0 || y >= SY || z < 0 || z >= SZ) return 0;
     return this.roles[this._idx(x, y, z)];
   }
 
   set(x: number, y: number, z: number, blockId: number, role = BlockRole.SOLID) {
-    if (x < 0 || x >= S || y < 0 || y >= S || z < 0 || z >= S) return;
+    if (x < 0 || x >= SX || y < 0 || y >= SY || z < 0 || z >= SZ) return;
     const i = this._idx(x, y, z);
     this.grid[i] = blockId;
     this.roles[i] = role;
@@ -65,7 +71,7 @@ export class World {
   }
 
   clear(x: number, y: number, z: number) {
-    if (x < 0 || x >= S || y < 0 || y >= S || z < 0 || z >= S) return;
+    if (x < 0 || x >= SX || y < 0 || y >= SY || z < 0 || z >= SZ) return;
     const i = this._idx(x, y, z);
     this.grid[i] = 0;
     this.roles[i] = 0;
@@ -75,7 +81,16 @@ export class World {
     return this.get(Math.floor(x), Math.floor(y), Math.floor(z)) !== 0;
   }
 
-  /** Check if floored coords have a specific role */
+  /** Grid for meshing: in play mode SPAWN blocks are treated as air (invisible). */
+  getGridForDisplay(playMode: boolean): Uint8Array {
+    if (!playMode) return this.grid;
+    const out = new Uint8Array(this.grid.length);
+    out.set(this.grid);
+    for (let i = 0; i < this.roles.length; i++)
+      if (this.roles[i] === BlockRole.SPAWN) out[i] = 0;
+    return out;
+  }
+
   roleAt(x: number, y: number, z: number): number {
     return this.getRole(Math.floor(x), Math.floor(y), Math.floor(z));
   }
@@ -87,13 +102,13 @@ export class World {
   findSpawn(): [number, number, number] {
     for (let i = 0; i < S3; i++) {
       if (this.roles[i] === BlockRole.SPAWN) {
-        const x = i % S;
-        const y = Math.floor(i / S) % S;
+        const x = i % SX;
+        const y = Math.floor(i / SX) % SY;
         const z = Math.floor(i / S2);
         return [x, y + 1, z];
       }
     }
-    return [16, 20, 16];
+    return [16, 16, 16];
   }
 
   reset() {
@@ -102,121 +117,65 @@ export class World {
     this.triggers = [];
     this.moverPaths = {};
     this.portalTargets = {};
-    this._spawnPos = [16, 20, 16];
+    this._spawnPos = [16, 16, 16];
   }
 
-  /** Generate a simple default level with a wheelchair person */
   generateDefault() {
     this.reset();
-    // Ground layer
-    for (let x = 0; x < S; x++)
-      for (let z = 0; z < S; z++) {
-        this.set(x, 0, z, 1); // grass
-        if (x === 0 || x === S - 1 || z === 0 || z === S - 1)
-          this.set(x, 0, z, 3); // stone border
+    for (let x = 0; x < SX; x++)
+      for (let z = 0; z < SZ; z++) {
+        this.set(x, 0, z, 1);
+        if (x === 0 || x === SX - 1 || z === 0 || z === SZ - 1)
+          this.set(x, 0, z, 3);
       }
-    // Spawn marker
     this.set(4, 1, 4, 6, BlockRole.SPAWN);
-
-    // Small path
-    for (let z = 4; z < 20; z++) {
+    const pathLen = Math.min(20, SZ - 8);
+    for (let z = 4; z < 4 + pathLen; z++) {
       this.set(4, 0, z, 3);
       this.set(5, 0, z, 3);
     }
-
-    // Wheelchair person at center of the world
-    this._placeWheelchairPerson(14, 1, 14);
+    const px = SX - 6, pz = SZ - 6;
+    if (px >= 6 && pz >= 10) this._placeWheelchairPerson(px, 1, pz);
   }
 
-  /**
-   * Place a voxel wheelchair person at the given base position.
-   * Facing +Z direction. ~8 voxels tall, ~6 wide.
-   * Palette: 3=grey(frame), 4=red(seat), 5=blue(shirt),
-   *          7=orange(skin), 9=white(eyes), 10=black(wheels/hair), 15=bluegrey(pants)
-   */
   private _placeWheelchairPerson(bx: number, by: number, bz: number) {
-    const B = 10; // black
-    const G = 3;  // grey
-    const R = 4;  // red
-    const BL = 5; // blue
-    const SK = 7; // skin (orange)
-    const W = 9;  // white
-    const P = 15; // pants (blue-grey)
-
-    // Helper: place block relative to base
+    const B = 10, G = 3, R = 4, BL = 5, SK = 7, W = 9, P = 15;
     const p = (dx: number, dy: number, dz: number, c: number) =>
       this.set(bx + dx, by + dy, bz + dz, c);
-
-    // Helper: fill rect
     const fill = (x0: number, x1: number, y: number, z0: number, z1: number, c: number) => {
       for (let x = x0; x <= x1; x++)
-        for (let z = z0; z <= z1; z++)
-          p(x, y, z, c);
+        for (let z = z0; z <= z1; z++) p(x, y, z, c);
     };
-
-    // ── y=0: Wheel bottoms + front casters ──
-    p(0, 0, 1, B); p(0, 0, 2, B); p(0, 0, 3, B); p(0, 0, 4, B);  // left wheel bottom
-    p(5, 0, 1, B); p(5, 0, 2, B); p(5, 0, 3, B); p(5, 0, 4, B);  // right wheel bottom
-    p(2, 0, 5, B); p(3, 0, 5, B);                                   // front casters
-
-    // ── y=1: Wheel sides + frame axle ──
-    p(0, 1, 0, B); p(0, 1, 5, B);  // left wheel sides
-    p(5, 1, 0, B); p(5, 1, 5, B);  // right wheel sides
-    fill(1, 4, 1, 3, 3, G);         // axle bar
-    p(1, 1, 4, G); p(1, 1, 5, G);   // left front strut
-    p(4, 1, 4, G); p(4, 1, 5, G);   // right front strut
-
-    // ── y=2: Wheel sides + seat frame ──
-    p(0, 2, 0, B); p(0, 2, 5, B);  // left wheel sides
-    p(5, 2, 0, B); p(5, 2, 5, B);  // right wheel sides
-    fill(1, 4, 2, 1, 4, G);         // seat frame base
-
-    // ── y=3: Wheel tops + seat cushion ──
-    p(0, 3, 1, B); p(0, 3, 2, B); p(0, 3, 3, B); p(0, 3, 4, B);  // left wheel top
-    p(5, 3, 1, B); p(5, 3, 2, B); p(5, 3, 3, B); p(5, 3, 4, B);  // right wheel top
-    fill(1, 4, 3, 1, 4, R);         // red seat cushion 4x4
-
-    // ── y=4: Legs + feet + armrests + backrest lower ──
-    p(2, 4, 2, P); p(2, 4, 3, P); p(2, 4, 4, P);  // left leg
-    p(3, 4, 2, P); p(3, 4, 3, P); p(3, 4, 4, P);  // right leg
-    p(2, 4, 5, B); p(3, 4, 5, B);                   // shoes
-    fill(1, 4, 4, 0, 0, G);                          // backrest lower
-    p(0, 4, 1, G); p(0, 4, 2, G); p(0, 4, 3, G);   // left armrest
-    p(5, 4, 1, G); p(5, 4, 2, G); p(5, 4, 3, G);   // right armrest
-
-    // ── y=5: Lower torso + backrest ──
-    fill(1, 4, 5, 0, 0, G);         // backrest mid
-    p(1, 5, 1, BL); p(2, 5, 1, BL); p(3, 5, 1, BL); p(4, 5, 1, BL); // shirt row
-
-    // ── y=6: Upper torso + arms ──
-    fill(1, 4, 6, 0, 0, G);         // backrest top
-    fill(1, 4, 6, 1, 1, BL);        // shirt row (4 wide)
-    p(0, 6, 2, SK);                  // left hand (on wheel)
-    p(5, 6, 2, SK);                  // right hand (on wheel)
-
-    // ── y=7: Shoulders + arms ──
-    fill(1, 4, 7, 1, 2, BL);        // shoulders wider
-    p(0, 7, 1, SK); p(5, 7, 1, SK); // upper arms
-
-    // ── y=8: Neck ──
+    p(0, 0, 1, B); p(0, 0, 2, B); p(0, 0, 3, B); p(0, 0, 4, B);
+    p(5, 0, 1, B); p(5, 0, 2, B); p(5, 0, 3, B); p(5, 0, 4, B);
+    p(2, 0, 5, B); p(3, 0, 5, B);
+    p(0, 1, 0, B); p(0, 1, 5, B); p(5, 1, 0, B); p(5, 1, 5, B);
+    fill(1, 4, 1, 3, 3, G); p(1, 1, 4, G); p(1, 1, 5, G); p(4, 1, 4, G); p(4, 1, 5, G);
+    p(0, 2, 0, B); p(0, 2, 5, B); p(5, 2, 0, B); p(5, 2, 5, B);
+    fill(1, 4, 2, 1, 4, G);
+    p(0, 3, 1, B); p(0, 3, 2, B); p(0, 3, 3, B); p(0, 3, 4, B);
+    p(5, 3, 1, B); p(5, 3, 2, B); p(5, 3, 3, B); p(5, 3, 4, B);
+    fill(1, 4, 3, 1, 4, R);
+    p(2, 4, 2, P); p(2, 4, 3, P); p(2, 4, 4, P); p(3, 4, 2, P); p(3, 4, 3, P); p(3, 4, 4, P);
+    p(2, 4, 5, B); p(3, 4, 5, B);
+    fill(1, 4, 4, 0, 0, G);
+    p(0, 4, 1, G); p(0, 4, 2, G); p(0, 4, 3, G);
+    p(5, 4, 1, G); p(5, 4, 2, G); p(5, 4, 3, G);
+    fill(1, 4, 5, 0, 0, G);
+    p(1, 5, 1, BL); p(2, 5, 1, BL); p(3, 5, 1, BL); p(4, 5, 1, BL);
+    fill(1, 4, 6, 0, 0, G); fill(1, 4, 6, 1, 1, BL);
+    p(0, 6, 2, SK); p(5, 6, 2, SK);
+    fill(1, 4, 7, 1, 2, BL); p(0, 7, 1, SK); p(5, 7, 1, SK);
     p(2, 8, 1, SK); p(3, 8, 1, SK);
-
-    // ── y=9: Head lower ──
-    fill(1, 4, 9, 0, 2, SK);        // head block 4x3
-    p(2, 9, 2, W); p(3, 9, 2, W);   // eyes (white)
-
-    // ── y=10: Head upper + hair ──
-    fill(1, 4, 10, 0, 2, SK);       // head top
-    fill(1, 4, 10, 0, 0, B);        // hair back
-
-    // ── y=11: Hair ──
-    fill(1, 4, 11, 0, 1, B);        // hair crown
+    fill(1, 4, 9, 0, 2, SK); p(2, 9, 2, W); p(3, 9, 2, W);
+    fill(1, 4, 10, 0, 2, SK); fill(1, 4, 10, 0, 0, B);
+    fill(1, 4, 11, 0, 1, B);
   }
 
   serialize(): GameSave {
     return {
       v: 1,
-      size: S,
+      size: [SX, SY, SZ],
       grid: rleEncode(this.grid),
       roles: rleEncode(this.roles),
       palette: this.palette,
@@ -229,9 +188,27 @@ export class World {
 
   deserialize(save: GameSave) {
     this.reset();
-    rleDecode(save.grid, this.grid);
-    rleDecode(save.roles, this.roles);
-    this.palette = save.palette;
+    const [sx, sy, sz2] = Array.isArray(save.size) ? save.size : [save.size, save.size, save.size];
+    const saveLen = sx * sy * sz2;
+    if (saveLen === S3) {
+      rleDecode(save.grid, this.grid);
+      rleDecode(save.roles, this.roles);
+    } else {
+      const tmpGrid = new Uint8Array(saveLen);
+      const tmpRoles = new Uint8Array(saveLen);
+      rleDecode(save.grid, tmpGrid);
+      rleDecode(save.roles, tmpRoles);
+      const copyLen = Math.min(sx, SX) * Math.min(sy, SY) * Math.min(sz2, SZ);
+      for (let i = 0; i < copyLen; i++) {
+        const x = i % sx, y = Math.floor(i / sx) % sy, z = Math.floor(i / (sx * sy));
+        if (x < SX && y < SY && z < SZ) {
+          const dst = x + y * SX + z * S2;
+          this.grid[dst] = tmpGrid[i];
+          this.roles[dst] = tmpRoles[i];
+        }
+      }
+    }
+    this.palette = save.palette || this.palette;
     this.triggers = save.triggers || [];
     this.moverPaths = save.moverPaths || {};
     this.portalTargets = save.portalTargets || {};
@@ -258,8 +235,6 @@ function rleDecode(rle: number[], target: Uint8Array) {
   for (let i = 0; i < rle.length; i += 2) {
     const count = rle[i];
     const val = rle[i + 1];
-    for (let j = 0; j < count && pos < target.length; j++) {
-      target[pos++] = val;
-    }
+    for (let j = 0; j < count && pos < target.length; j++) target[pos++] = val;
   }
 }

@@ -27,6 +27,13 @@ const LANG_NAMES: Record<string, string> = {
   sl:'Slovenščina',ka:'ქართული',he:'עברית',fa:'فارسی',bn:'বাংলা',
 };
 
+const FLAGS: Record<string, string> = {
+  en:'🇺🇸',ru:'🇷🇺',es:'🇪🇸',zh:'🇨🇳',ar:'🇸🇦',pt:'🇧🇷',fr:'🇫🇷',de:'🇩🇪',ja:'🇯🇵',ko:'🇰🇷',
+  hi:'🇮🇳',it:'🇮🇹',tr:'🇹🇷',pl:'🇵🇱',nl:'🇳🇱',uk:'🇺🇦',vi:'🇻🇳',th:'🇹🇭',id:'🇮🇩',ms:'🇲🇾',
+  sv:'🇸🇪',cs:'🇨🇿',ro:'🇷🇴',el:'🇬🇷',hu:'🇭🇺',da:'🇩🇰',fi:'🇫🇮',no:'🇳🇴',sk:'🇸🇰',bg:'🇧🇬',
+  hr:'🇭🇷',sr:'🇷🇸',lt:'🇱🇹',lv:'🇱🇻',et:'🇪🇪',sl:'🇸🇮',ka:'🇬🇪',he:'🇮🇱',fa:'🇮🇷',bn:'🇧🇩',
+};
+
 // T[langIndex] = array of translated strings matching K order
 const T: string[][] = [
   // en
@@ -129,8 +136,12 @@ export function t(key: Key): string {
   return T[_lang]?.[ki] ?? T[0][ki] ?? key;
 }
 
-export function getLangs(): { code: string; name: string }[] {
-  return LANGS.map(c => ({ code: c, name: LANG_NAMES[c] || c }));
+export function getLangs(): { code: string; name: string; flag: string }[] {
+  return LANGS.map(c => ({ code: c, name: LANG_NAMES[c] || c, flag: FLAGS[c] || '🏳️' }));
+}
+
+export function getFlag(code: string): string {
+  return FLAGS[code] ?? '🏳️';
 }
 
 // Auto-detect language on load

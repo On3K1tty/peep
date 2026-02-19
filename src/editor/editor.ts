@@ -1,10 +1,11 @@
 import { Camera, Renderer } from '../engine/renderer';
 import { WorldMesh } from '../engine/voxel';
-import { World } from '../game/world';
+import { World, WORLD_SX, WORLD_SY, WORLD_SZ } from '../game/world';
 import { Palette } from './palette';
+import { LayerGrid } from './layer-grid';
 import { TriggerEditor } from './trigger-ui';
 import { playSound } from '../game/sound';
-import { t, getLangs, setLang, getLang } from '../app/i18n';
+import { t, getLangs, setLang, getLang, getFlag } from '../app/i18n';
 
 type EditorTool = 'draw' | 'erase' | 'role';
 
@@ -23,6 +24,7 @@ const NORMAL_OFFSETS: Record<string, [number, number, number]> = {
 export class Editor {
   readonly toolbar: HTMLElement;
   readonly palette: Palette;
+  readonly layerGrid: LayerGrid;
   readonly triggerEditor: TriggerEditor;
 
   private _world: World;
@@ -73,7 +75,7 @@ export class Editor {
     this._cam.state.distance = 35;
     this._cam.state.rotationX = -30;
     this._cam.state.rotationY = 35;
-    this._cam.state.target.set(16, 4, 16);
+    this._cam.state.target.set(WORLD_SX / 2, WORLD_SY / 4, WORLD_SZ / 2);
     this._renderer = new Renderer(this._editorWrap, this._cam, 700, 8);
     this._mesh = new WorldMesh(8);
     this._renderer.world.appendChild(this._mesh.el);
@@ -81,17 +83,31 @@ export class Editor {
 
     this._bindEditorInput();
 
+    // Palette (sync selection to layer grid)
+    this.palette = new Palette(world.palette);
+    container.appendChild(this.palette.el);
+    container.appendChild(this.palette.roleBar);
+
+    // Layer-by-layer 2D editor (plan: main editor)
+    this.layerGrid = new LayerGrid(world);
+    this.layerGrid.setSelectedColor(this.palette.selectedColor);
+    this.layerGrid.setSelectedRole(this.palette.selectedRole);
+    this.layerGrid.onChange = () => {
+      this._refreshMesh();
+      playSound('place');
+    };
+    this.palette.onChange = (colorIndex, role) => {
+      this.layerGrid.setSelectedColor(colorIndex);
+      this.layerGrid.setSelectedRole(role);
+    };
+    container.appendChild(this.layerGrid.el);
+
     // Render loop
     const renderLoop = () => {
       this._renderer.render();
       requestAnimationFrame(renderLoop);
     };
     requestAnimationFrame(renderLoop);
-
-    // Palette
-    this.palette = new Palette(world.palette);
-    container.appendChild(this.palette.el);
-    container.appendChild(this.palette.roleBar);
 
     // Trigger editor
     this.triggerEditor = new TriggerEditor();
@@ -192,7 +208,7 @@ export class Editor {
     if (!off) return;
     const nx = bx + off[0], ny = by + off[1], nz = bz + off[2];
 
-    if (nx < 0 || nx >= 32 || ny < 0 || ny >= 32 || nz < 0 || nz >= 32) return;
+    if (nx < 0 || nx >= WORLD_SX || ny < 0 || ny >= WORLD_SY || nz < 0 || nz >= WORLD_SZ) return;
     if (this._world.get(nx, ny, nz) !== 0) return;
 
     const color = this.palette.selectedColor;
@@ -249,32 +265,63 @@ export class Editor {
     this._redoBtn.classList.toggle('disabled', this._redoStack.length === 0);
   }
 
-  // Toolbar
+  // Toolbar (inline SVG icons, no text)
+
+  private static _iconPencil = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 15.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>';
+  private static _iconEraser = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20H7L3 16a2 2 0 010-2.83L16 3a2 2 0 012.83 0l2.83 2.83a2 2 0 010 2.83L10 20"/><path d="M18 13l-4-4"/><path d="M14 17l-4-4"/></svg>';
+  private static _iconGear = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+  private static _iconLightning = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+  private static _iconPlay = '<svg class="tb-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  private static _iconFloppy = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>';
+  private static _iconShare = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.82 3.98M15.41 6.51l-6.82 3.98"/></svg>';
 
   private _rebuildToolbar() {
     this.toolbar.innerHTML =
-      `<button class="active" data-tool="draw">${t('draw')}</button>` +
-      `<button data-tool="erase">${t('erase')}</button>` +
-      `<button data-tool="role">${t('role')}</button>` +
-      `<button class="tb-triggers">${t('triggers')}</button>` +
-      `<select class="tb-lang"></select>` +
+      `<button class="tb-btn active" data-tool="draw" title="${t('draw')}">${Editor._iconPencil}</button>` +
+      `<button class="tb-btn" data-tool="erase" title="${t('erase')}">${Editor._iconEraser}</button>` +
+      `<button class="tb-btn" data-tool="role" title="${t('role')}">${Editor._iconGear}</button>` +
+      `<button class="tb-btn tb-triggers" title="${t('triggers')}">${Editor._iconLightning}</button>` +
+      `<button class="tb-btn tb-lang" title="${t('language')}" type="button">${getFlag(getLang())}</button>` +
       `<div class="tb-spacer"></div>` +
-      `<button class="tb-play">${t('play')}</button>` +
-      `<button class="tb-save">${t('save')}</button>` +
-      `<button class="tb-share">${t('share')}</button>`;
+      `<button class="tb-btn tb-play" title="${t('play')}">${Editor._iconPlay}</button>` +
+      `<button class="tb-btn tb-save" title="${t('save')}">${Editor._iconFloppy}</button>` +
+      `<button class="tb-btn tb-share" title="${t('share')}">${Editor._iconShare}</button>`;
 
-    const langSelect = this.toolbar.querySelector('.tb-lang') as HTMLSelectElement;
-    for (const { code, name } of getLangs()) {
-      const opt = document.createElement('option');
-      opt.value = code; opt.textContent = name;
-      if (code === getLang()) opt.selected = true;
-      langSelect.appendChild(opt);
-    }
-    langSelect.addEventListener('change', () => {
-      setLang(langSelect.value);
-      this._rebuildToolbar();
-      this._bindToolbar();
+    const langBtn = this.toolbar.querySelector('.tb-lang')!;
+    langBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._showFlagPicker(langBtn as HTMLElement);
     });
+  }
+
+  private _showFlagPicker(anchor: HTMLElement) {
+    const existing = document.querySelector('.flag-picker');
+    if (existing) { existing.remove(); return; }
+    const wrap = document.createElement('div');
+    wrap.className = 'flag-picker';
+    const grid = document.createElement('div');
+    grid.className = 'flag-picker-grid';
+    for (const { code, name, flag } of getLangs()) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'flag-picker-btn';
+      btn.textContent = flag;
+      btn.title = name;
+      if (code === getLang()) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        setLang(code);
+        (this.toolbar.querySelector('.tb-lang') as HTMLElement).textContent = getFlag(code);
+        wrap.remove();
+        this._rebuildToolbar();
+        this._bindToolbar();
+        playSound('click');
+      });
+      grid.appendChild(btn);
+    }
+    wrap.appendChild(grid);
+    const close = () => { wrap.remove(); document.removeEventListener('click', close); };
+    document.body.appendChild(wrap);
+    requestAnimationFrame(() => document.addEventListener('click', close));
   }
 
   private _bindToolbar() {
@@ -296,17 +343,19 @@ export class Editor {
   }
 
   private _refreshMesh() {
-    this._mesh.rebuildFromGrid(this._world.grid, this._world.palette);
+    this._mesh.rebuildFromGrid(this._world.grid, this._world.palette, WORLD_SX, WORLD_SY, WORLD_SZ);
   }
 
   refresh() {
     this._refreshMesh();
+    this.layerGrid.refresh();
     this.triggerEditor.load(this._world.triggers);
   }
 
   setVisible(v: boolean) {
     const d = v ? '' : 'none';
     this._editorWrap.style.display = d;
+    this.layerGrid.el.style.display = d;
     this.palette.el.style.display = d;
     this.palette.roleBar.style.display = 'none';
     this.toolbar.style.display = v ? 'flex' : 'none';
@@ -316,6 +365,7 @@ export class Editor {
 
   destroy() {
     this.palette.destroy();
+    this.layerGrid.destroy();
     this.triggerEditor.destroy();
     this.toolbar.remove();
     this._editorWrap.remove();
