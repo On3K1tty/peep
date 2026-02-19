@@ -199,7 +199,6 @@ export class App {
       this._engine.camera.mode = 'orbit';
       this._engine.renderer.root.style.display = 'none';
       this._engine.pause();
-      this._gyro.stop();
       tgBackButton(false);
     } else {
       this._editor?.setVisible(false);

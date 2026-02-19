@@ -1,18 +1,22 @@
 import type { Camera } from '../engine/renderer';
 
-const EMA = 0.12;
+const EMA = 0.055;
 const RAD2DEG = 180 / Math.PI;
+const DEAD_ZONE_DEG = 2.5;
+const NEUTRAL_PITCH_DEG = 28;
 
 export class GyroCamera {
   enabled = false;
   private _baseAlpha = 0;
-  private _baseBeta = 0;
+  private _baseBeta = NEUTRAL_PITCH_DEG;
   private _baseGamma = 0;
   private _targetYaw = 0;
   private _targetPitch = 0;
   private _steerValue = 0;
   private _targetForward = 0;
   private _hasPermission = false;
+  private _smoothYaw = 0;
+  private _smoothPitch = 0;
   private _handler: ((e: DeviceOrientationEvent) => void) | null = null;
   private _handlerAbsolute: ((e: DeviceOrientationEvent) => void) | null = null;
   private _motionHandler: ((e: DeviceMotionEvent) => void) | null = null;
@@ -75,14 +79,20 @@ export class GyroCamera {
     return true;
   }
 
+  private _deadZone(v: number): number {
+    if (Math.abs(v) < DEAD_ZONE_DEG) return 0;
+    return v > 0 ? v - DEAD_ZONE_DEG : v + DEAD_ZONE_DEG;
+  }
+
   private _onOrientation(e: DeviceOrientationEvent) {
     if (e.alpha == null || e.beta == null) return;
-    this._targetYaw = (e.alpha - this._baseAlpha) * 0.4;
-    this._targetPitch = (e.beta - this._baseBeta) * 0.4;
-    this._targetForward = Math.max(-1, Math.min(1, (e.beta - this._baseBeta) * 0.025));
-    if (e.gamma != null) {
-      this._steerValue = Math.max(-1, Math.min(1, (e.gamma - this._baseGamma) / 25));
-    }
+    const dYaw = this._deadZone(e.alpha - this._baseAlpha);
+    const dPitch = this._deadZone(e.beta - this._baseBeta);
+    const dGamma = e.gamma != null ? this._deadZone(e.gamma - this._baseGamma) : 0;
+    this._targetYaw = dYaw * 0.4;
+    this._targetPitch = dPitch * 0.4;
+    this._targetForward = Math.max(-1, Math.min(1, dPitch * 0.025));
+    this._steerValue = Math.max(-1, Math.min(1, dGamma / 25));
   }
 
   /** Управление по акселерометру (DeviceMotion) — почти всегда работает на Android. */
@@ -102,11 +112,14 @@ export class GyroCamera {
     const beta = Math.atan2(-gz, -gy + 1e-6) * RAD2DEG;
     const gamma = Math.atan2(gx, -gy + 1e-6) * RAD2DEG;
 
+    const dPitch = this._deadZone(beta - this._baseBeta);
+    const dGamma = this._deadZone(gamma - this._baseGamma);
+
     this._motionActive = true;
-    this._targetPitch = (beta - this._baseBeta) * 0.4;
-    this._targetForward = Math.max(-1, Math.min(1, (beta - this._baseBeta) * 0.025));
-    this._steerValue = Math.max(-1, Math.min(1, (gamma - this._baseGamma) / 25));
-    this._targetYaw = (gamma - this._baseGamma) * 0.4;
+    this._targetPitch = dPitch * 0.4;
+    this._targetForward = Math.max(-1, Math.min(1, dPitch * 0.025));
+    this._steerValue = Math.max(-1, Math.min(1, dGamma / 25));
+    this._targetYaw = dGamma * 0.4;
   }
 
   private _onSensorReading() {
@@ -122,10 +135,14 @@ export class GyroCamera {
     const cosr = 1 - 2 * (x * x + y * y);
     const gamma = Math.atan2(sinr, cosr) * RAD2DEG;
 
-    this._targetYaw = (alpha - this._baseAlpha) * 0.4;
-    this._targetPitch = (beta - this._baseBeta) * 0.4;
-    this._targetForward = Math.max(-1, Math.min(1, (beta - this._baseBeta) * 0.025));
-    this._steerValue = Math.max(-1, Math.min(1, (gamma - this._baseGamma) / 25));
+    const dYaw = this._deadZone(alpha - this._baseAlpha);
+    const dPitch = this._deadZone(beta - this._baseBeta);
+    const dGamma = this._deadZone(gamma - this._baseGamma);
+
+    this._targetYaw = dYaw * 0.4;
+    this._targetPitch = dPitch * 0.4;
+    this._targetForward = Math.max(-1, Math.min(1, dPitch * 0.025));
+    this._steerValue = Math.max(-1, Math.min(1, dGamma / 25));
   }
 
   start() {
@@ -162,6 +179,8 @@ export class GyroCamera {
     this._steerValue = 0;
     this._targetForward = 0;
     this._motionActive = false;
+    this._smoothYaw = 0;
+    this._smoothPitch = 0;
 
     if (this._handler) {
       window.removeEventListener('deviceorientation', this._handler);
@@ -193,6 +212,8 @@ export class GyroCamera {
     this._targetPitch = 0;
     this._steerValue = 0;
     this._targetForward = 0;
+    this._smoothYaw = 0;
+    this._smoothPitch = 0;
   }
 
   getMoveVector(): { forward: number; right: number } {
@@ -207,9 +228,11 @@ export class GyroCamera {
 
   update(camera: Camera) {
     if (!this.enabled) return;
-    camera.state.rotationY += (this._targetYaw - camera.state.rotationY) * EMA;
+    this._smoothYaw += (this._targetYaw - this._smoothYaw) * EMA;
+    this._smoothPitch += (this._targetPitch - this._smoothPitch) * EMA;
+    camera.state.rotationY += (this._smoothYaw - camera.state.rotationY) * EMA;
     camera.state.rotationX += (
-      Math.max(-89, Math.min(89, this._targetPitch)) - camera.state.rotationX
+      Math.max(-89, Math.min(89, this._smoothPitch)) - camera.state.rotationX
     ) * EMA;
   }
 
