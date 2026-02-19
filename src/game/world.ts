@@ -121,17 +121,33 @@ export class World {
       }
   }
 
-  /** Sims-Voxel: алгоритмическое дерево (сосна/дуб). x,z — база, height — высота ствола + крона. */
-  putTree(x: number, z: number, height: number) {
+  /** Sims-Voxel: куст — маленькая сфера листвы. bx,by,bz — центр базы. */
+  putBush(x: number, y: number, z: number) {
     const bx = Math.floor(x);
+    const by = Math.floor(y);
     const bz = Math.floor(z);
-    if (bx < 0 || bx >= SX || bz < 0 || bz >= SZ) return;
+    if (bx < 0 || bx >= SX || by < 0 || by >= SY || bz < 0 || bz >= SZ) return;
+    const leaf = 1, r = 1;
+    for (let dy = 0; dy <= 1 && by + dy < SY; dy++)
+      for (let dx = -r; dx <= r; dx++)
+        for (let dz = -r; dz <= r; dz++) {
+          if (dx * dx + dy * dy + dz * dz <= r * r + 0.5)
+            this.set(bx + dx, by + dy, bz + dz, leaf);
+        }
+  }
+
+  /** Sims-Voxel: дерево. bx,by,bz — база ствола, height — высота. */
+  putTree(x: number, y: number, z: number, height: number) {
+    const bx = Math.floor(x);
+    const by = Math.floor(y);
+    const bz = Math.floor(z);
+    if (bx < 0 || bx >= SX || by < 0 || by >= SY || bz < 0 || bz >= SZ) return;
     const trunkH = Math.max(1, Math.floor(height * 0.5));
     const leafR = Math.max(1, Math.floor(height * 0.35));
     const wood = 2;
     const leaf = 1;
-    for (let y = 0; y < trunkH && y < SY; y++) this.set(bx, y, bz, wood);
-    const cy = Math.min(trunkH, SY - 1);
+    for (let dy = 0; dy < trunkH && by + dy < SY; dy++) this.set(bx, by + dy, bz, wood);
+    const cy = Math.min(by + trunkH, SY - 1);
     for (let dy = 0; dy <= leafR && cy + dy < SY; dy++)
       for (let dx = -leafR; dx <= leafR; dx++)
         for (let dz = -leafR; dz <= leafR; dz++) {
@@ -141,6 +157,72 @@ export class World {
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
           if (dist <= leafR + 0.5) this.set(nx, cy + dy, nz, leaf);
         }
+  }
+
+  /** Штампы: дома, люди, животные, ландшафты. bx,by,bz — левый нижний угол. */
+  putSmallHouse(bx: number, by: number, bz: number) {
+    const W = 3, D = 4, H = 3;
+    this.putHollowBox(bx, by, bz, W, H, D, 3);
+    this.set(bx + 1, by + 1, bz, 0);
+  }
+  putBigHouse(bx: number, by: number, bz: number) {
+    const W = 5, D = 6, H = 4;
+    this.putHollowBox(bx, by, bz, W, H, D, 3);
+    this.set(bx + 2, by + 1, bz, 0);
+  }
+  putToilet(bx: number, by: number, bz: number) {
+    this.putBox(bx, by, bz, 2, 2, 2, 9);
+  }
+  putMan(bx: number, by: number, bz: number) {
+    const B = 10, G = 3, SK = 7, W = 9;
+    const p = (dx: number, dy: number, dz: number, c: number) => this.set(bx + dx, by + dy, bz + dz, c);
+    p(0, 0, 1, B); p(1, 0, 1, B);
+    p(0, 1, 0, B); p(1, 1, 0, B); p(0, 1, 1, G); p(1, 1, 1, G); p(0, 1, 2, B); p(1, 1, 2, B);
+    p(0, 2, 1, G); p(1, 2, 1, G);
+    p(0, 3, 1, SK); p(1, 3, 1, SK);
+    p(0, 4, 1, SK); p(1, 4, 1, SK);
+    p(0, 5, 1, W); p(1, 5, 1, W);
+  }
+  putWoman(bx: number, by: number, bz: number) {
+    const B = 10, G = 11, SK = 7, W = 9;
+    const p = (dx: number, dy: number, dz: number, c: number) => this.set(bx + dx, by + dy, bz + dz, c);
+    p(0, 0, 1, B); p(1, 0, 1, B);
+    p(0, 1, 0, B); p(1, 1, 0, B); p(0, 1, 1, G); p(1, 1, 1, G); p(0, 1, 2, B); p(1, 1, 2, B);
+    p(0, 2, 1, G); p(1, 2, 1, G);
+    p(0, 3, 1, SK); p(1, 3, 1, SK);
+    p(0, 4, 1, SK); p(1, 4, 1, SK);
+    p(0, 5, 1, W); p(1, 5, 1, W);
+  }
+  putCat(bx: number, by: number, bz: number) {
+    const O = 7, W = 9, B = 10;
+    const p = (dx: number, dy: number, dz: number, c: number) => this.set(bx + dx, by + dy, bz + dz, c);
+    p(0, 0, 0, O); p(1, 0, 0, O);
+    p(0, 1, 0, O); p(1, 1, 0, W); p(0, 1, 1, O); p(1, 1, 1, O);
+  }
+  putDog(bx: number, by: number, bz: number) {
+    const B = 2, W = 9, O = 7;
+    const p = (dx: number, dy: number, dz: number, c: number) => this.set(bx + dx, by + dy, bz + dz, c);
+    p(0, 0, 0, B); p(1, 0, 0, B); p(2, 0, 0, B);
+    p(0, 1, 0, B); p(1, 1, 0, W); p(2, 1, 0, B); p(1, 1, 1, O);
+  }
+  putUnicorn(bx: number, by: number, bz: number) {
+    const W = 9, P = 11, Y = 6;
+    const p = (dx: number, dy: number, dz: number, c: number) => this.set(bx + dx, by + dy, bz + dz, c);
+    p(0, 0, 0, W); p(1, 0, 0, W);
+    p(0, 1, 0, W); p(1, 1, 0, W); p(0, 1, 1, P);
+    p(0, 2, 0, W); p(1, 2, 0, W); p(0, 2, 1, Y);
+  }
+  putHill(bx: number, by: number, bz: number) {
+    const G = 1, D = 2;
+    for (let r = 2; r >= 0; r--) {
+      for (let dx = -r; dx <= r; dx++)
+        for (let dz = -r; dz <= r; dz++)
+          if (dx * dx + dz * dz <= r * r + 0.5)
+            this.set(bx + dx, by + (2 - r), bz + dz, r === 0 ? G : D);
+    }
+  }
+  putField(bx: number, by: number, bz: number) {
+    this.putBox(bx, by, bz, 4, 1, 4, 1);
   }
 
   /** Grid for meshing: in play mode SPAWN blocks are treated as air (invisible). */

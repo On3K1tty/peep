@@ -95,6 +95,18 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui
 .sp-btn:active { background:rgba(76,175,80,0.3); }
 .sp-btn.disabled { opacity:0.3; pointer-events:none; }
 
+/* ── Stamp Panel (дерево, дом, человек, животное, ландшафты) ── */
+.stamp-panel { position:fixed; left:8px; right:8px; bottom:52px; z-index:96; background:rgba(20,20,30,0.96); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto; }
+.stamp-cat { }
+.stamp-cat-header { width:100%; display:flex; align-items:center; gap:8px; padding:8px 12px; border:none; border-radius:8px; background:rgba(255,255,255,0.06); color:#fff; font-size:14px; cursor:pointer; text-align:left; }
+.stamp-cat-header:active, .stamp-cat-header.open { background:rgba(76,175,80,0.2); }
+.stamp-cat-icon { font-size:20px; }
+.stamp-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(70px, 1fr)); gap:6px; padding:8px 0 4px 12px; }
+.stamp-btn { display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 4px; border:none; border-radius:8px; background:rgba(255,255,255,0.08); color:#fff; font-size:11px; cursor:pointer; }
+.stamp-btn:active { background:rgba(255,255,255,0.2); }
+.stamp-btn.active { background:rgba(76,175,80,0.35); }
+.stamp-btn-icon { font-size:24px; line-height:1; }
+
 /* ── Palette ── */
 .palette-bar { position:fixed; left:0; right:0; bottom:46px; background:rgba(20,20,30,0.92); padding:4px 6px; display:flex; gap:3px; overflow-x:auto; z-index:95; border-top:1px solid rgba(255,255,255,0.05); }
 .pal-swatch { width:28px; height:28px; border-radius:5px; border:2px solid transparent; cursor:pointer; flex-shrink:0; }

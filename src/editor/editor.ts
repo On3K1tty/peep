@@ -5,10 +5,11 @@ import type { GyroCamera } from '../game/gyro';
 import { Palette } from './palette';
 import { LayerGrid } from './layer-grid';
 import { TriggerEditor } from './trigger-ui';
+import { StampPanel } from './stamp-panel';
 import { playSound } from '../game/sound';
 import { t, getLangs, setLang, getLang, getFlag } from '../app/i18n';
 
-type EditorTool = 'draw' | 'erase' | 'role';
+type EditorTool = 'draw' | 'erase' | 'role' | 'stamp';
 
 interface UndoEntry {
   x: number; y: number; z: number;
@@ -27,6 +28,7 @@ export class Editor {
   readonly palette: Palette;
   readonly layerGrid: LayerGrid;
   readonly triggerEditor: TriggerEditor;
+  readonly stampPanel: StampPanel;
 
   private _world: World;
   private _tool: EditorTool = 'draw';
@@ -133,6 +135,10 @@ export class Editor {
     this.triggerEditor.onChange = (triggers) => { world.triggers = triggers; };
     this.triggerEditor.load(world.triggers);
     container.appendChild(this.triggerEditor.el);
+
+    // Stamp panel (модели: дерево, дом, человек, животное, ландшафт)
+    this.stampPanel = new StampPanel(world);
+    container.appendChild(this.stampPanel.el);
 
     // Toolbar
     this.toolbar = document.createElement('div');
@@ -244,6 +250,21 @@ export class Editor {
   private _handleClick(target: HTMLElement) {
     if (!target.dataset.n) return;
 
+    if (this._tool === 'stamp' && this.stampPanel.selected) {
+      const n = target.dataset.n!;
+      const bx = +target.dataset.x!, by = +target.dataset.y!, bz = +target.dataset.z!;
+      const off = NORMAL_OFFSETS[n];
+      if (!off) return;
+      const nx = bx + off[0], ny = by + off[1], nz = bz + off[2];
+      if (nx < 0 || nx >= WORLD_SX || ny < 0 || ny >= WORLD_SY || nz < 0 || nz >= WORLD_SZ) return;
+      const placed = this.stampPanel.placeAt(nx, ny, nz);
+      if (placed) {
+        this._refreshMesh();
+        playSound('place');
+      }
+      return;
+    }
+
     if (this._tool === 'erase') {
       this._handleErase(target);
       return;
@@ -336,12 +357,14 @@ export class Editor {
   private static _iconPlay = '<svg class="tb-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   private static _iconFloppy = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>';
   private static _iconShare = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.82 3.98M15.41 6.51l-6.82 3.98"/></svg>';
+  private static _iconStamp = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>';
 
   private _rebuildToolbar() {
     this.toolbar.innerHTML =
       `<button class="tb-btn active" data-tool="draw" title="${t('draw')}">${Editor._iconPencil}</button>` +
       `<button class="tb-btn" data-tool="erase" title="${t('erase')}">${Editor._iconEraser}</button>` +
       `<button class="tb-btn" data-tool="role" title="${t('role')}">${Editor._iconGear}</button>` +
+      `<button class="tb-btn" data-tool="stamp" title="Штампы">${Editor._iconStamp}</button>` +
       `<button class="tb-btn tb-triggers" title="${t('triggers')}">${Editor._iconLightning}</button>` +
       `<button class="tb-btn tb-lang" title="${t('language')}" type="button">${getFlag(getLang())}</button>` +
       `<div class="tb-spacer"></div>` +
@@ -395,6 +418,8 @@ export class Editor {
         this._tool = tool;
         this.toolbar.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b === btn));
         this.palette.showRoles(tool === 'role');
+        this.stampPanel.show(tool === 'stamp');
+        if (tool !== 'stamp') this.stampPanel.clearSelection();
         return;
       }
       if (btn.classList.contains('tb-triggers')) this.triggerEditor.show();
@@ -421,6 +446,7 @@ export class Editor {
     this.palette.el.style.display = d;
     this.palette.roleBar.style.display = 'none';
     this.toolbar.style.display = v ? 'flex' : 'none';
+    this.stampPanel.show(v && this._tool === 'stamp');
     this._sidePanel.style.display = v ? 'flex' : 'none';
     if (v) this.triggerEditor.hide();
   }
@@ -429,6 +455,7 @@ export class Editor {
     this.palette.destroy();
     this.layerGrid.destroy();
     this.triggerEditor.destroy();
+    this.stampPanel.destroy();
     this.toolbar.remove();
     this._editorWrap.remove();
     this._renderer.destroy();
