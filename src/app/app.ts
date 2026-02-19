@@ -128,75 +128,20 @@ export class App {
 
   private _initEditor() {
     if (this._editor) return;
-    this._editor = new Editor(this._world, this._container);
-    this._editor.onPlay = () => this.setMode('play');
+    this._editor = new Editor(this._world, this._container, this._gyro);
+    this._editor.onPlay = () => this._onPlayClick();
     this._editor.onSave = () => this._save();
     this._editor.onShare = () => this._share();
     this._editor.setVisible(false);
   }
 
-  // ── Splash ──
-
-  private _showSplash() {
-    this._mode = 'splash';
-    this._container.className = 'mode-splash';
-
-    this._splashEl = document.createElement('div');
-    this._splashEl.className = 'splash';
-    this._splashEl.innerHTML =
-      '<div class="splash-title">PEEP</div>' +
-      '<div class="splash-sub">wheelchair racer</div>' +
-      '<button class="splash-start">START</button>';
-    this._container.appendChild(this._splashEl);
-
-    this._splashEl.querySelector('.splash-start')!.addEventListener('click', () => {
-      playSound('click');
-      this._startRace();
+  /** Called from Play button (user gesture) — request gyro permission then start play. */
+  private _onPlayClick() {
+    playSound('click');
+    this._gyro.requestPermission().then((ok) => {
+      if (ok) this._gyro.start();
+      this.setMode('play');
     });
-  }
-
-  // ── Race ──
-
-  private _startRace() {
-    if (this._splashEl) { this._splashEl.remove(); this._splashEl = null; }
-    this._mode = 'race';
-    this._container.className = 'mode-race';
-
-    this._race = new Race(this._container, () => this._gyro.getSteer());
-    this._race.onFinish = (won) => {
-      this._flashEl.classList.add('on');
-      const removeFlash = () => {
-        this._flashEl.classList.remove('on');
-        this._flashEl.style.opacity = '0';
-      };
-      // Guaranteed: remove white overlay 2.5s after flash (even if transition fails)
-      setTimeout(removeFlash, 2500);
-      setTimeout(() => {
-        try {
-          this._race?.destroy();
-          this._race = null;
-          this._mode = 'edit';
-          this._container.className = 'mode-edit';
-          this._initEditor();
-          this._editor.setVisible(true);
-          this._editor.refresh();
-          this._hud.setDpadVisible(false);
-          this._hud.showMessage('');
-          this._hud.el.style.display = 'none';
-          this._engine.camera.mode = 'orbit';
-          this._engine.renderer.root.style.display = 'none';
-          this._engine.pause();
-          this._gyro.stop();
-          tgBackButton(false);
-          requestAnimationFrame(() => removeFlash());
-        } catch (e) {
-          removeFlash();
-          this._mode = 'edit';
-          this._container.className = 'mode-edit';
-        }
-      }, 800);
-    };
-    this._race.start();
   }
 
   // ── Mode switching ──
@@ -217,7 +162,6 @@ export class App {
       this._engine.pause();
       this._gyro.stop();
       tgBackButton(false);
-      this._gyro.requestPermission().then(ok => { if (ok) this._gyro.start(); });
     } else {
       this._editor?.setVisible(false);
       this._hud.el.style.display = '';
@@ -235,7 +179,6 @@ export class App {
       this._engine.camera.state.rotationY = 0;
       const sp = this._world.findSpawn();
       this._engine.camera.state.position.set(sp[0] + 0.5, sp[1] + 1.5, sp[2] + 0.5);
-      this._gyro.requestPermission().then(ok => { if (ok) this._gyro.start(); });
       tgBackButton(true, () => this.setMode('edit'));
     }
   }
@@ -248,9 +191,16 @@ export class App {
     const p = this._player;
     if (!p) return;
 
-    const move = this._gyro.getMoveVector();
-    const forward = move.forward;
-    const right = move.right;
+    let forward: number, right: number;
+    if (this._gyro.enabled) {
+      const move = this._gyro.getMoveVector();
+      forward = move.forward;
+      right = move.right;
+    } else {
+      const k = this._engine.input.state.keys;
+      forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
+      right = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+    }
     const jump = this._jumpPressed || this._engine.input.state.keys.has('Space');
     this._jumpPressed = false;
 
