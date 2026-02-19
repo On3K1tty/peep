@@ -48,6 +48,10 @@ export class Editor {
   private _dragDist = 0;
   private _longPressTimer = 0;
   private _gyro?: GyroCamera;
+  private _joystickPanel!: HTMLElement;
+  private _stickForward = 0;
+  private _stickRight = 0;
+  private _editorZoomDelta = 0;
 
   onPlay?: () => void;
   onSave?: () => void;
@@ -105,9 +109,20 @@ export class Editor {
     };
     container.appendChild(this.layerGrid.el);
 
-    // Render loop (gyro drives camera when enabled)
+    this._buildEditorJoystick(container);
+
+    const ORBIT_SPEED = 1.2;
+    const ZOOM_SPEED = 2;
     const renderLoop = () => {
-      if (this._gyro?.enabled) this._gyro.update(this._cam);
+      if (this._gyro?.enabled) {
+        this._gyro.update(this._cam);
+        this._joystickPanel.style.display = 'none';
+      } else {
+        this._joystickPanel.style.display = 'flex';
+        if (this._stickForward || this._stickRight) this._cam.orbit(this._stickRight * ORBIT_SPEED, this._stickForward * ORBIT_SPEED);
+        if (this._editorZoomDelta) this._cam.zoom(this._editorZoomDelta * ZOOM_SPEED);
+        this._editorZoomDelta = 0;
+      }
       this._renderer.render();
       requestAnimationFrame(renderLoop);
     };
@@ -128,6 +143,49 @@ export class Editor {
 
     this._refreshMesh();
     this._updateUndoButtons();
+  }
+
+  private _buildEditorJoystick(container: HTMLElement) {
+    const panel = document.createElement('div');
+    panel.className = 'editor-joystick edit-only';
+    panel.style.display = 'none';
+    panel.innerHTML =
+      '<div class="ej-dpad">' +
+        '<button class="ej-dp ej-u" data-d="u" type="button">&#9650;</button>' +
+        '<button class="ej-dp ej-l" data-d="l" type="button">&#9664;</button>' +
+        '<button class="ej-dp ej-r" data-d="r" type="button">&#9654;</button>' +
+        '<button class="ej-dp ej-d" data-d="d" type="button">&#9660;</button>' +
+      '</div>' +
+      '<div class="ej-zoom">' +
+        '<button class="ej-z ej-in" type="button">+</button>' +
+        '<button class="ej-z ej-out" type="button">−</button>' +
+      '</div>';
+
+    const setStick = (d: string, down: boolean) => {
+      if (d === 'u') this._stickForward = down ? 1 : 0;
+      else if (d === 'd') this._stickForward = down ? -1 : 0;
+      else if (d === 'l') this._stickRight = down ? -1 : 0;
+      else this._stickRight = down ? 1 : 0;
+    };
+    const clearAxis = (d: string) => {
+      if (d === 'u' || d === 'd') this._stickForward = 0;
+      else this._stickRight = 0;
+    };
+    panel.querySelectorAll('.ej-dp').forEach((btn) => {
+      const d = (btn as HTMLElement).dataset.d!;
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); setStick(d, true); }, { passive: false });
+      btn.addEventListener('touchend', () => clearAxis(d));
+      btn.addEventListener('mousedown', (e) => { e.preventDefault(); setStick(d, true); });
+      btn.addEventListener('mouseup', () => clearAxis(d));
+      btn.addEventListener('mouseleave', () => clearAxis(d));
+    });
+    panel.querySelector('.ej-in')!.addEventListener('click', (e) => { e.preventDefault(); this._editorZoomDelta += 1; });
+    panel.querySelector('.ej-out')!.addEventListener('click', (e) => { e.preventDefault(); this._editorZoomDelta -= 1; });
+    panel.querySelector('.ej-in')!.addEventListener('touchstart', (e) => { e.preventDefault(); this._editorZoomDelta += 1; }, { passive: false });
+    panel.querySelector('.ej-out')!.addEventListener('touchstart', (e) => { e.preventDefault(); this._editorZoomDelta -= 1; }, { passive: false });
+
+    container.appendChild(panel);
+    this._joystickPanel = panel;
   }
 
   private _bindEditorInput() {
@@ -375,5 +433,6 @@ export class Editor {
     this._editorWrap.remove();
     this._renderer.destroy();
     this._sidePanel.remove();
+    this._joystickPanel?.remove();
   }
 }

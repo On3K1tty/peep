@@ -92,7 +92,8 @@ export class App {
     this._gyroBtn.className = 'gyro-btn off';
     this._gyroBtn.type = 'button';
     this._gyroBtn.setAttribute('aria-label', 'Gyro');
-    this._gyroBtn.innerHTML = '<span class="gyro-icon"></span>';
+    this._gyroBtn.title = t('gyro_toggle') || 'Гиро вкл/выкл';
+    this._gyroBtn.innerHTML = '<span class="gyro-icon"></span><span class="gyro-label">' + (t('gyro') || 'Гиро') + '</span>';
     this._gyroBtn.addEventListener('click', () => this._onGyroToggle());
     container.appendChild(this._gyroBtn);
 
@@ -204,6 +205,7 @@ export class App {
       this._editor?.setVisible(false);
       this._hud.el.style.display = '';
       this._exitPlayBtn.style.display = 'block';
+      this._hud.setDpadVisible(!this._gyro.enabled);
       this._hud.showMessage('');
       this._engine.renderer.root.style.display = '';
       this._engine.resume();
@@ -235,19 +237,23 @@ export class App {
       forward = move.forward;
       right = move.right;
     } else {
+      const dpad = this._hud.getMoveInput();
       const k = this._engine.input.state.keys;
-      forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
-      right = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+      forward = dpad.forward || (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
+      right = dpad.right || (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
     }
     const jump = this._jumpPressed || this._engine.input.state.keys.has('Space');
     this._jumpPressed = false;
 
-    const { pinchDelta } = this._engine.input.state;
+    const { pinchDelta, deltaX, deltaY } = this._engine.input.state;
     if (pinchDelta) this._engine.camera.zoom(pinchDelta * 2);
+    const hudZoom = this._hud.consumeZoomDelta();
+    if (hudZoom) this._engine.camera.zoom(hudZoom * 2);
+    if (!this._gyro.enabled && (deltaX || deltaY)) this._engine.camera.orbit(deltaX * 0.4, deltaY * 0.4);
     this._engine.input.resetDeltas();
 
     p.state.yaw = this._engine.camera.state.rotationY * (Math.PI / 180);
-    this._gyro.update(this._engine.camera);
+    if (this._gyro.enabled) this._gyro.update(this._engine.camera);
 
     const sfx = p.move(forward, right, jump, dt);
     if (sfx) { playSound(sfx as any); tgHaptic(sfx === 'hit' ? 'heavy' : 'light'); }
@@ -300,6 +306,7 @@ export class App {
     const on = await this._gyro.toggle();
     this._gyroBtn.classList.toggle('on', on);
     this._gyroBtn.classList.toggle('off', !on);
+    if (this._mode === 'play') this._hud.setDpadVisible(!on);
     tgHaptic('light');
   }
 
