@@ -28,6 +28,16 @@ export class GyroCamera {
   private _lastAccelZ = 0;
   private _zoomVelocity = 0;
 
+  /** Returns whether gyro/orientation APIs are available (without starting sensors). */
+  isAvailable(): boolean {
+    const win = window as any;
+    return (
+      typeof DeviceOrientationEvent !== 'undefined' ||
+      typeof DeviceMotionEvent !== 'undefined' ||
+      typeof win?.AbsoluteOrientationSensor === 'function'
+    );
+  }
+
   async requestPermission(): Promise<boolean> {
     const DOE = DeviceOrientationEvent as any;
     const DME = DeviceMotionEvent as any;
@@ -239,6 +249,17 @@ export class GyroCamera {
     this._targetForward = 0;
     this._smoothYaw = 0;
     this._smoothPitch = 0;
+  }
+
+  resetAndCalibrate(camera: Camera) {
+    this.calibrate();
+    if (camera.mode === 'fly') {
+      camera.state.rotationX = 0;
+      camera.state.rotationY = 0;
+      return;
+    }
+    camera.state.rotationX = -30;
+    camera.state.rotationY = 35;
   }
 
   getMoveVector(): { forward: number; right: number } {

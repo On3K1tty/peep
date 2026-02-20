@@ -1,5 +1,6 @@
 import { Renderer, Camera } from './renderer';
 import { InputManager } from './input';
+import { perfTick } from './perf';
 import type { EngineOptions, SceneNode } from './types';
 
 export class Scene {
@@ -112,6 +113,7 @@ export class Engine {
     for (const cb of this._updateCbs) cb(dt);
     this.scene.update();
     this.renderer.render();
+    perfTick();
     this.input.resetDeltas();
   };
 }

@@ -18,7 +18,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "publish": "bash scripts/publish.sh"
+    "build:gate": "vite build && bash scripts/check-size.sh",
+    "publish": "bash scripts/publish.sh",
+    "prepush:publish": "bash scripts/publish.sh"
   },
   "keywords": [
     "voxel",

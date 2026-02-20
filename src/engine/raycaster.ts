@@ -47,28 +47,34 @@ export function rayIntersectVoxel(
 
   const maxT = (sx + sy + sz) * 2;
   let t = 0;
+  let enterFace: FaceNormal | null = null;
+  const fallbackFace: FaceNormal =
+    Math.abs(dirX) >= Math.abs(dirY) && Math.abs(dirX) >= Math.abs(dirZ)
+      ? (dirX > 0 ? 'left' : 'right')
+      : Math.abs(dirY) >= Math.abs(dirZ)
+        ? (dirY > 0 ? 'bottom' : 'top')
+        : (dirZ > 0 ? 'back' : 'front');
 
   while (t < maxT) {
     if (ix >= 0 && ix < sx && iy >= 0 && iy < sy && iz >= 0 && iz < sz && solid(ix, iy, iz)) {
-      let face: FaceNormal = 'front';
-      if (tMaxX <= tMaxY && tMaxX <= tMaxZ) face = signX > 0 ? 'right' : 'left';
-      else if (tMaxY <= tMaxZ) face = signY > 0 ? 'top' : 'bottom';
-      else face = signZ > 0 ? 'front' : 'back';
-      return { x: ix, y: iy, z: iz, face };
+      return { x: ix, y: iy, z: iz, face: enterFace ?? fallbackFace };
     }
 
     if (tMaxX <= tMaxY && tMaxX <= tMaxZ) {
       ix += signX;
       t = tMaxX;
       tMaxX += tDeltaX;
+      enterFace = signX > 0 ? 'left' : 'right';
     } else if (tMaxY <= tMaxZ) {
       iy += signY;
       t = tMaxY;
       tMaxY += tDeltaY;
+      enterFace = signY > 0 ? 'bottom' : 'top';
     } else {
       iz += signZ;
       t = tMaxZ;
       tMaxZ += tDeltaZ;
+      enterFace = signZ > 0 ? 'back' : 'front';
     }
   }
   return null;

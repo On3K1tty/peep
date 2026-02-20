@@ -54,6 +54,9 @@ export class Editor {
   private _stickForward = 0;
   private _stickRight = 0;
   private _editorZoomDelta = 0;
+  private readonly _defaultCamDistance = 80;
+  private readonly _defaultCamRotX = -30;
+  private readonly _defaultCamRotY = 35;
 
   onPlay?: () => void;
   onSave?: () => void;
@@ -81,9 +84,9 @@ export class Editor {
     container.appendChild(this._editorWrap);
 
     this._cam = new Camera('orbit');
-    this._cam.state.distance = 80;
-    this._cam.state.rotationX = -30;
-    this._cam.state.rotationY = 35;
+    this._cam.state.distance = this._defaultCamDistance;
+    this._cam.state.rotationX = this._defaultCamRotX;
+    this._cam.state.rotationY = this._defaultCamRotY;
     this._cam.state.target.set(WORLD_SX / 2, WORLD_SY / 4, WORLD_SZ / 2);
     this._renderer = new Renderer(this._editorWrap, this._cam, 700, 8);
     this._mesh = new WorldMesh(8);
@@ -255,19 +258,18 @@ export class Editor {
 
     this._editorWrap.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      const t = (e.target as HTMLElement).closest('[data-n]') as HTMLElement;
-      if (t?.dataset.x != null) this._handleErase(+t.dataset.x!, +t.dataset.y!, +t.dataset.z!);
+      const hit = this._renderer.pickVoxel(e.clientX, e.clientY, this._world.grid, WORLD_SX, WORLD_SY, WORLD_SZ);
+      if (hit) this._handleErase(hit.x, hit.y, hit.z);
     });
   }
 
   private _handleClick(target: HTMLElement, clientX?: number, clientY?: number) {
-    if (!target.dataset.n) return;
-
-    const hit = (clientX != null && clientY != null) ? this._renderer.pickVoxel(clientX, clientY, this._world.grid, WORLD_SX, WORLD_SY, WORLD_SZ) : null;
-    const bx = hit ? hit.x : +target.dataset.x!;
-    const by = hit ? hit.y : +target.dataset.y!;
-    const bz = hit ? hit.z : +target.dataset.z!;
-    const n = hit ? hit.face : target.dataset.n!;
+    /* Placement: pickVoxel(clientX, clientY) → targetVoxel + faceNormal (strict, no dataset fallback) */
+    const hit = (clientX != null && clientY != null)
+      ? this._renderer.pickVoxel(clientX, clientY, this._world.grid, WORLD_SX, WORLD_SY, WORLD_SZ)
+      : null;
+    if (!hit) return;
+    const { x: bx, y: by, z: bz, face: n } = hit;
     const off = NORMAL_OFFSETS[n];
     if (!off) return;
     const nx = bx + off[0], ny = by + off[1], nz = bz + off[2];
@@ -363,15 +365,22 @@ export class Editor {
 
   private _rebuildToolbar() {
     this.toolbar.innerHTML =
+      `<div class="tb-group">` +
       `<button class="tb-btn active" data-tool="draw" title="${t('draw')}">${Editor._iconPencil}</button>` +
       `<button class="tb-btn" data-tool="erase" title="${t('erase')}">${Editor._iconEraser}</button>` +
       `<button class="tb-btn" data-tool="role" title="${t('role')}">${Editor._iconGear}</button>` +
+      `</div>` +
+      `<div class="tb-divider"></div>` +
+      `<div class="tb-group">` +
       `<button class="tb-btn" data-tool="stamp" title="Штампы">${Editor._iconStamp}</button>` +
       `<button class="tb-btn tb-triggers" title="${t('triggers')}">${Editor._iconLightning}</button>` +
+      `</div>` +
       `<div class="tb-spacer"></div>` +
+      `<div class="tb-group">` +
       `<button class="tb-btn tb-play" title="${t('play')}">${Editor._iconPlay}</button>` +
       `<button class="tb-btn tb-save" title="${t('save')}">${Editor._iconFloppy}</button>` +
-      `<button class="tb-btn tb-share" title="${t('share')}">${Editor._iconShare}</button>`;
+      `<button class="tb-btn tb-share" title="${t('share')}">${Editor._iconShare}</button>` +
+      `</div>`;
 
     }
 
@@ -396,13 +405,23 @@ export class Editor {
   }
 
   private _refreshMesh() {
+    if (this._world.chunkManager && !this._world.chunkManager.hasDirty()) return;
     this._mesh.rebuildFromGrid(this._world.grid, this._world.palette, WORLD_SX, WORLD_SY, WORLD_SZ);
+    this._world.chunkManager?.clearDirty();
   }
 
   refresh() {
     this._refreshMesh();
     this.layerGrid.refresh();
     this.triggerEditor.load(this._world.triggers);
+  }
+
+  resetCameraPose() {
+    this._cam.state.rotationX = this._defaultCamRotX;
+    this._cam.state.rotationY = this._defaultCamRotY;
+    this._cam.state.distance = this._defaultCamDistance;
+    this._cam.state.target.set(WORLD_SX / 2, WORLD_SY / 4, WORLD_SZ / 2);
+    this._renderer.render();
   }
 
   setVisible(v: boolean) {

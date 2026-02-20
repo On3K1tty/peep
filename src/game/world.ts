@@ -1,5 +1,6 @@
 import { BlockRole } from '../engine/types';
 import type { TriggerDef, GameSave } from '../engine/types';
+import { SimpleChunkManager, type ChunkManager } from '../engine/chunk-manager';
 
 /** 128x32x128 per level; chain via portals for larger worlds */
 export const WORLD_SX = 128;
@@ -38,6 +39,8 @@ export class World {
   moverPaths: Record<string, [number, number, number][]> = {};
   portalTargets: Record<string, [number, number, number]> = {};
   name = 'Untitled';
+  /** Optional: for chunk-ready dirty-region rebuild */
+  chunkManager: ChunkManager | null = null;
 
   private _spawnPos: [number, number, number] = [64, 1, 64];
 
@@ -45,6 +48,8 @@ export class World {
     this.grid = new Uint8Array(S3);
     this.roles = new Uint8Array(S3);
     this.palette = [...DEFAULT_PALETTE];
+    this.chunkManager = new SimpleChunkManager(16, SX, SY, SZ);
+    this.chunkManager.markDirtyRegion(0, 0, 0, SX - 1, SY - 1, SZ - 1);
   }
 
   private _idx(x: number, y: number, z: number): number {
@@ -68,6 +73,7 @@ export class World {
     this.grid[i] = blockId;
     this.roles[i] = role;
     if (role === BlockRole.SPAWN) this._spawnPos = [x, y + 1, z];
+    this.chunkManager?.markDirty(x, y, z);
   }
 
   clear(x: number, y: number, z: number) {
@@ -75,6 +81,7 @@ export class World {
     const i = this._idx(x, y, z);
     this.grid[i] = 0;
     this.roles[i] = 0;
+    this.chunkManager?.markDirty(x, y, z);
   }
 
   isSolid(x: number, y: number, z: number): boolean {
@@ -262,6 +269,7 @@ export class World {
     this.moverPaths = {};
     this.portalTargets = {};
     this._spawnPos = [64, 1, 64];
+    this.chunkManager?.markDirtyRegion(0, 0, 0, SX - 1, SY - 1, SZ - 1);
   }
 
   generateDefault() {
@@ -359,6 +367,7 @@ export class World {
     this.portalTargets = save.portalTargets || {};
     this.name = save.name || 'Untitled';
     this._spawnPos = this.findSpawn();
+    this.chunkManager?.markDirtyRegion(0, 0, 0, SX - 1, SY - 1, SZ - 1);
   }
 }
 

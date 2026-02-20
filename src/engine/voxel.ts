@@ -11,6 +11,14 @@ const FACE_BRIGHTNESS: Record<FaceNormal, number> = {
   left: 0.75,
   bottom: 0.6,
 };
+const FACE_CLASS: Record<FaceNormal, string> = {
+  top: 'vf-top',
+  front: 'vf-front',
+  back: 'vf-back',
+  right: 'vf-right',
+  left: 'vf-left',
+  bottom: 'vf-bottom',
+};
 
 export class WorldMesh implements SceneNode {
   readonly el: HTMLElement;
@@ -51,17 +59,12 @@ export class WorldMesh implements SceneNode {
       const baseColor = varyColor(face.color, seed);
       const brightness = FACE_BRIGHTNESS[face.normal];
 
-      /* процедурный стиль: цвет + AO. Шум — общий SVG feTurbulence на .voxel-world */
-      const aoGradient = 'linear-gradient(135deg,transparent 50%,rgba(0,0,0,0.12) 100%),linear-gradient(225deg,transparent 50%,rgba(0,0,0,0.08) 100%)';
-      div.className = 'vf vf-proc';
-      div.style.cssText =
-        `position:absolute;width:${fw}px;height:${fh}px;` +
-        `backface-visibility:hidden;transform-origin:0 0;` +
-        `image-rendering:pixelated;pointer-events:auto;` +
-        `background-color:${baseColor};` +
-        `background-image:${aoGradient};` +
-        `background-size:100% 100%,100% 100%;` +
-        `filter:brightness(${brightness});`;
+      /* процедурный стиль: цвет + AO. Шум — единый SVG feTurbulence на .voxel-world */
+      div.className = `vf vf-proc vf-base ${FACE_CLASS[face.normal]}`;
+      div.style.setProperty('--vf-w', `${fw}px`);
+      div.style.setProperty('--vf-h', `${fh}px`);
+      div.style.setProperty('--vf-color', baseColor);
+      div.style.setProperty('--vf-brightness', String(brightness));
 
       div.style.transform = faceTransform(face, s);
       div.dataset.n = face.normal;

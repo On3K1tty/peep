@@ -123,6 +123,8 @@ export class StampPanel {
 
   show(v: boolean) {
     this.el.style.display = v ? 'flex' : 'none';
+    if (v && !this._expandedCategory) this._expandedCategory = CATEGORIES[0].id;
+    if (v) this._render();
   }
 
   destroy() {

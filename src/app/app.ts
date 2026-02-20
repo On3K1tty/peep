@@ -10,6 +10,7 @@ import { Editor } from '../editor/editor';
 import { saveGame, loadGame, encodeForURL, decodeFromURL } from './storage';
 import { tgInit, tgHaptic, tgShare, tgBackButton } from './tg';
 import { initLang, t } from './i18n';
+import { getDomCount, getFps, GATES } from '../engine/perf';
 
 type AppMode = 'splash' | 'edit' | 'play';
 
@@ -35,6 +36,8 @@ export class App {
   private _exitPlayBtn: HTMLElement;
   private _splashEl: HTMLElement | null = null;
   private _pendingUrlPlay = false;
+  private _perfEl: HTMLElement | null = null;
+  private _perfLastAt = 0;
 
   constructor(containerId: string) {
     initLang();
@@ -101,7 +104,7 @@ export class App {
     container.addEventListener('pointerdown', (e) => {
       const now = Date.now();
       if (now - this._lastTapTime < 400) {
-        this._gyro.calibrate();
+        this._resetAndCalibrateActiveCamera();
         this._lastTapTime = 0;
         tgHaptic('light');
       } else {
@@ -120,8 +123,26 @@ export class App {
 
     this._pendingUrlPlay = !!urlData;
     this._showSplash();
+    this._initPerfBaseline();
 
     tgBackButton(false);
+  }
+
+  private _initPerfBaseline() {
+    if (!import.meta.env.DEV) return;
+    const el = document.createElement('div');
+    el.style.position = 'fixed';
+    el.style.right = '8px';
+    el.style.top = '8px';
+    el.style.zIndex = '999';
+    el.style.padding = '6px 8px';
+    el.style.borderRadius = '8px';
+    el.style.background = 'rgba(0,0,0,0.7)';
+    el.style.color = '#d9e6ff';
+    el.style.font = '11px/1.2 monospace';
+    el.style.pointerEvents = 'none';
+    this._container.appendChild(el);
+    this._perfEl = el;
   }
 
   /** Загрузочный экран: кнопка Старт включает гироскоп (user gesture для iOS). */
@@ -150,14 +171,20 @@ export class App {
     playSound('click');
     tgHaptic('light');
 
-    const ok = await this._gyro.requestPermission();
-    if (ok) this._gyro.start();
+    let gyroOn = false;
+    if (this._gyro.isAvailable()) {
+      const ok = await this._gyro.requestPermission();
+      if (ok) {
+        this._gyro.start();
+        gyroOn = this._gyro.enabled;
+      }
+    }
 
     this._splashEl.remove();
     this._splashEl = null;
     this._gyroBtn.style.display = '';
-    this._gyroBtn.classList.toggle('on', this._gyro.enabled);
-    this._gyroBtn.classList.toggle('off', !this._gyro.enabled);
+    this._gyroBtn.classList.toggle('on', gyroOn);
+    this._gyroBtn.classList.toggle('off', !gyroOn);
 
     this._initEditor();
     if (this._pendingUrlPlay) {
@@ -181,7 +208,7 @@ export class App {
   private _onPlayClick() {
     playSound('click');
     this._gyro.requestPermission().then((ok) => {
-      if (ok) this._gyro.start();
+      if (ok && this._gyro.isAvailable()) this._gyro.start();
       this.setMode('play');
     });
   }
@@ -228,6 +255,7 @@ export class App {
   // ── Play mode update ──
 
   private _update(dt: number) {
+    this._updatePerfPanel();
     if (this._mode !== 'play') return;
 
     const p = this._player;
@@ -287,6 +315,20 @@ export class App {
     }
   }
 
+  private _updatePerfPanel() {
+    if (!this._perfEl) return;
+    const now = performance.now();
+    if (now - this._perfLastAt < 500) return;
+    this._perfLastAt = now;
+
+    const fps = getFps();
+    const dom = getDomCount();
+    const faces = this._mesh.faceCount;
+    const fpsOk = fps >= GATES.FPS_MIN;
+    this._perfEl.textContent =
+      `FPS ${fps} ${fpsOk ? 'OK' : 'LOW'} | DOM ${dom} | faces ${faces} | size gate < ${GATES.BUNDLE_MAX_KB}KB raw/gzip`;
+  }
+
   private _handleEvents(events: TriggerEvent[]) {
     for (const evt of events) {
       if (evt.type === 'text') this._hud.toast(evt.text, 3000);
@@ -304,7 +346,22 @@ export class App {
     setTimeout(() => document.addEventListener('pointerdown', handler), 500);
   }
 
+  private _resetAndCalibrateActiveCamera() {
+    if (this._mode === 'edit' && this._editor) {
+      this._editor.resetCameraPose();
+    } else if (this._mode === 'play') {
+      this._engine.camera.state.rotationX = 0;
+      this._engine.camera.state.rotationY = 0;
+    }
+    if (this._mode === 'play') this._gyro.resetAndCalibrate(this._engine.camera);
+    else this._gyro.calibrate();
+  }
+
   private async _onGyroToggle() {
+    if (!this._gyro.isAvailable()) {
+      this._hud.toast(t('gyro_unavailable'), 1200);
+      return;
+    }
     const on = await this._gyro.toggle();
     this._gyroBtn.classList.toggle('on', on);
     this._gyroBtn.classList.toggle('off', !on);
