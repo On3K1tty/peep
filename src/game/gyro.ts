@@ -22,9 +22,11 @@ export class GyroCamera {
   private _handlerAbsolute: ((e: DeviceOrientationEvent) => void) | null = null;
   private _motionHandler: ((e: DeviceMotionEvent) => void) | null = null;
   private _sensor: any = null;
+  private _linearSensor: any = null;
   private _motionActive = false;
-  /** true после первого события ориентации — тогда motion не перезаписывает (приоритет ориентации). */
   private _orientationActive = false;
+  private _lastAccelZ = 0;
+  private _zoomVelocity = 0;
 
   async requestPermission(): Promise<boolean> {
     const DOE = DeviceOrientationEvent as any;
@@ -106,10 +108,11 @@ export class GyroCamera {
   }
 
   private _onMotion(e: DeviceMotionEvent) {
-    if (this._orientationActive) return; /* ориентация приоритетнее — не перезаписывать motion'ом */
+    if (this._orientationActive) return;
+    const acc = e.acceleration;
+    if (acc?.z != null) this.feedAccelZ(acc.z);
     const a = e.accelerationIncludingGravity;
     if (!a || a.x == null || a.y == null || a.z == null) return;
-
     const x = a.x;
     const y = a.y;
     const z = a.z;
@@ -184,6 +187,14 @@ export class GyroCamera {
 
     this._motionHandler = (e) => this._onMotion(e);
     window.addEventListener('devicemotion', this._motionHandler);
+    if (typeof win.LinearAccelerationSensor === 'function') {
+      try {
+        const s = new win.LinearAccelerationSensor({ frequency: 30 });
+        s.addEventListener('reading', () => { this.feedAccelZ(s.z ?? 0); });
+        s.start();
+        this._linearSensor = s;
+      } catch (_) {}
+    }
   }
 
   stop() {
@@ -209,10 +220,12 @@ export class GyroCamera {
       this._motionHandler = null;
     }
     if (this._sensor) {
-      try {
-        this._sensor.stop();
-      } catch (_) {}
+      try { this._sensor.stop(); } catch (_) {}
       this._sensor = null;
+    }
+    if (this._linearSensor) {
+      try { this._linearSensor.stop(); } catch (_) {}
+      this._linearSensor = null;
     }
   }
 
@@ -243,9 +256,15 @@ export class GyroCamera {
     this._smoothYaw += (this._targetYaw - this._smoothYaw) * EMA;
     this._smoothPitch += (this._targetPitch - this._smoothPitch) * EMA;
     camera.state.rotationY += (this._smoothYaw - camera.state.rotationY) * EMA;
-    camera.state.rotationX += (
-      Math.max(-89, Math.min(89, this._smoothPitch)) - camera.state.rotationX
-    ) * EMA;
+    camera.state.rotationX += (Math.max(-89, Math.min(89, this._smoothPitch)) - camera.state.rotationX) * EMA;
+    this._zoomVelocity *= 0.9;
+    if (Math.abs(this._zoomVelocity) > 0.5) camera.zoom(this._zoomVelocity * 0.15);
+  }
+
+  /** Z-depth zoom: передай accelZ (линейное ускорение по оси «к себе») для изменения zoom. */
+  feedAccelZ(accelZ: number) {
+    this._zoomVelocity += accelZ * 0.02;
+    this._zoomVelocity = Math.max(-20, Math.min(20, this._zoomVelocity));
   }
 
   destroy() {

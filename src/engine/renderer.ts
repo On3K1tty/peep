@@ -67,7 +67,7 @@ export class Camera {
   }
 
   zoom(delta: number) {
-    this.state.distance = Math.max(0.5, Math.min(200, this.state.distance + delta));
+    this.state.distance = Math.max(0.1, Math.min(200, this.state.distance + delta));
   }
 
   moveLocal(forward: number, right: number, up: number) {

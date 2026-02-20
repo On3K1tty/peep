@@ -7,7 +7,7 @@ import { LayerGrid } from './layer-grid';
 import { TriggerEditor } from './trigger-ui';
 import { StampPanel } from './stamp-panel';
 import { playSound } from '../game/sound';
-import { t, getLangs, setLang, getLang, getFlag } from '../app/i18n';
+import { t } from '../app/i18n';
 
 type EditorTool = 'draw' | 'erase' | 'role' | 'stamp';
 
@@ -204,11 +204,15 @@ export class Editor {
     let lastX = 0, lastY = 0;
     let startTarget: HTMLElement | null = null;
 
+    let lastClickX = 0, lastClickY = 0;
     const onDown = (x: number, y: number, target: HTMLElement) => {
-      dragging = true; lastX = x; lastY = y; this._dragDist = 0;
+      dragging = true; lastX = x; lastY = y; lastClickX = x; lastClickY = y; this._dragDist = 0;
       startTarget = target;
       this._longPressTimer = window.setTimeout(() => {
-        if (this._dragDist < 5) this._handleErase(startTarget!);
+        if (this._dragDist < 5 && startTarget?.dataset.n) {
+          const bx = +startTarget.dataset.x!, by = +startTarget.dataset.y!, bz = +startTarget.dataset.z!;
+          this._handleErase(bx, by, bz);
+        }
         startTarget = null;
       }, 500);
     };
@@ -222,18 +226,22 @@ export class Editor {
     const onUp = () => {
       clearTimeout(this._longPressTimer);
       if (dragging && this._dragDist < 5 && startTarget) {
-        this._handleClick(startTarget);
+        this._handleClick(startTarget, lastClickX, lastClickY);
       }
       dragging = false; startTarget = null;
     };
 
-    this._editorWrap.addEventListener('mousedown', (e) => onDown(e.clientX, e.clientY, e.target as HTMLElement));
+    this._editorWrap.addEventListener('mousedown', (e) => {
+      const t = (e.target as HTMLElement).closest('[data-n]') as HTMLElement;
+      if (t) onDown(e.clientX, e.clientY, t);
+    });
     window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
     window.addEventListener('mouseup', () => onUp());
 
     this._editorWrap.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      onDown(e.touches[0].clientX, e.touches[0].clientY, e.target as HTMLElement);
+      const t = (e.target as HTMLElement).closest('[data-n]') as HTMLElement;
+      if (t) onDown(e.touches[0].clientX, e.touches[0].clientY, t);
     }, { passive: false });
     this._editorWrap.addEventListener('touchmove', (e) => {
       if (e.touches.length === 1) onMove(e.touches[0].clientX, e.touches[0].clientY);
@@ -245,38 +253,35 @@ export class Editor {
       this._cam.zoom(e.deltaY * 0.02);
     }, { passive: false });
 
-    // Right-click = erase
     this._editorWrap.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      this._handleErase(e.target as HTMLElement);
+      const t = (e.target as HTMLElement).closest('[data-n]') as HTMLElement;
+      if (t?.dataset.x != null) this._handleErase(+t.dataset.x!, +t.dataset.y!, +t.dataset.z!);
     });
   }
 
-  private _handleClick(target: HTMLElement) {
+  private _handleClick(target: HTMLElement, clientX?: number, clientY?: number) {
     if (!target.dataset.n) return;
 
+    const hit = (clientX != null && clientY != null) ? this._renderer.pickVoxel(clientX, clientY, this._world.grid, WORLD_SX, WORLD_SY, WORLD_SZ) : null;
+    const bx = hit ? hit.x : +target.dataset.x!;
+    const by = hit ? hit.y : +target.dataset.y!;
+    const bz = hit ? hit.z : +target.dataset.z!;
+    const n = hit ? hit.face : target.dataset.n!;
+    const off = NORMAL_OFFSETS[n];
+    if (!off) return;
+    const nx = bx + off[0], ny = by + off[1], nz = bz + off[2];
+
     if (this._tool === 'stamp' && this.stampPanel.selected) {
-      const n = target.dataset.n!;
-      const bx = +target.dataset.x!, by = +target.dataset.y!, bz = +target.dataset.z!;
-      const off = NORMAL_OFFSETS[n];
-      if (!off) return;
-      const nx = bx + off[0], ny = by + off[1], nz = bz + off[2];
-      if (nx < 0 || nx >= WORLD_SX || ny < 0 || ny >= WORLD_SY || nz < 0 || nz >= WORLD_SZ) return;
       const placed = this.stampPanel.placeAt(nx, ny, nz);
-      if (placed) {
-        this._refreshMesh();
-        playSound('place');
-      }
+      if (placed) { this._refreshMesh(); playSound('place'); }
       return;
     }
-
     if (this._tool === 'erase') {
-      this._handleErase(target);
+      this._handleErase(bx, by, bz);
       return;
     }
-
     if (this._tool === 'role') {
-      const bx = +target.dataset.x!, by = +target.dataset.y!, bz = +target.dataset.z!;
       const oldBlock = this._world.get(bx, by, bz);
       if (oldBlock === 0) return;
       const oldRole = this._world.getRole(bx, by, bz);
@@ -289,13 +294,7 @@ export class Editor {
       return;
     }
 
-    // Draw: place block adjacent to clicked face
-    const n = target.dataset.n!;
-    const bx = +target.dataset.x!, by = +target.dataset.y!, bz = +target.dataset.z!;
-    const off = NORMAL_OFFSETS[n];
-    if (!off) return;
-    const nx = bx + off[0], ny = by + off[1], nz = bz + off[2];
-
+    // Draw: place block at targetVoxel + faceNormal
     if (nx < 0 || nx >= WORLD_SX || ny < 0 || ny >= WORLD_SY || nz < 0 || nz >= WORLD_SZ) return;
     if (this._world.get(nx, ny, nz) !== 0) return;
 
@@ -307,9 +306,7 @@ export class Editor {
     playSound('place');
   }
 
-  private _handleErase(target: HTMLElement) {
-    if (!target.dataset.n) return;
-    const bx = +target.dataset.x!, by = +target.dataset.y!, bz = +target.dataset.z!;
+  private _handleErase(bx: number, by: number, bz: number) {
     const oldBlock = this._world.get(bx, by, bz);
     const oldRole = this._world.getRole(bx, by, bz);
     if (oldBlock === 0) return;
@@ -371,48 +368,12 @@ export class Editor {
       `<button class="tb-btn" data-tool="role" title="${t('role')}">${Editor._iconGear}</button>` +
       `<button class="tb-btn" data-tool="stamp" title="Штампы">${Editor._iconStamp}</button>` +
       `<button class="tb-btn tb-triggers" title="${t('triggers')}">${Editor._iconLightning}</button>` +
-      `<button class="tb-btn tb-lang" title="${t('language')}" type="button">${getFlag(getLang())}</button>` +
       `<div class="tb-spacer"></div>` +
       `<button class="tb-btn tb-play" title="${t('play')}">${Editor._iconPlay}</button>` +
       `<button class="tb-btn tb-save" title="${t('save')}">${Editor._iconFloppy}</button>` +
       `<button class="tb-btn tb-share" title="${t('share')}">${Editor._iconShare}</button>`;
 
-    const langBtn = this.toolbar.querySelector('.tb-lang')!;
-    langBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._showFlagPicker(langBtn as HTMLElement);
-    });
-  }
-
-  private _showFlagPicker(anchor: HTMLElement) {
-    const existing = document.querySelector('.flag-picker');
-    if (existing) { existing.remove(); return; }
-    const wrap = document.createElement('div');
-    wrap.className = 'flag-picker';
-    const grid = document.createElement('div');
-    grid.className = 'flag-picker-grid';
-    for (const { code, name, flag } of getLangs()) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'flag-picker-btn';
-      btn.textContent = flag;
-      btn.title = name;
-      if (code === getLang()) btn.classList.add('active');
-      btn.addEventListener('click', () => {
-        setLang(code);
-        (this.toolbar.querySelector('.tb-lang') as HTMLElement).textContent = getFlag(code);
-        wrap.remove();
-        this._rebuildToolbar();
-        this._bindToolbar();
-        playSound('click');
-      });
-      grid.appendChild(btn);
     }
-    wrap.appendChild(grid);
-    const close = () => { wrap.remove(); document.removeEventListener('click', close); };
-    document.body.appendChild(wrap);
-    requestAnimationFrame(() => document.addEventListener('click', close));
-  }
 
   private _bindToolbar() {
     this.toolbar.addEventListener('click', (e) => {

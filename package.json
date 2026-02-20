@@ -17,9 +17,17 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "publish": "bash scripts/publish.sh"
   },
-  "keywords": ["voxel", "css", "3d", "dom", "engine", "mini-app"],
+  "keywords": [
+    "voxel",
+    "css",
+    "3d",
+    "dom",
+    "engine",
+    "mini-app"
+  ],
   "license": "MIT",
   "devDependencies": {
     "typescript": "^5.7.0",
