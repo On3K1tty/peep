@@ -1,7 +1,7 @@
 import { Mat4, DEG } from './math';
 import type { MergedFace, FaceNormal, SceneNode } from './types';
 import { greedyMeshGrid } from './mesher';
-import { getNoiseBank, pickNoiseSeed, varyColor } from './noise';
+import { varyColor } from './noise';
 
 const FACE_BRIGHTNESS: Record<FaceNormal, number> = {
   top: 1.0,
@@ -40,7 +40,6 @@ export class WorldMesh implements SceneNode {
     this._faceEls.length = 0;
 
     const s = this._voxelSize;
-    const noiseUrls = getNoiseBank();
     const normIdx: Record<FaceNormal, number> = { top: 0, bottom: 1, front: 2, back: 3, left: 4, right: 5 };
 
     for (const face of faces) {
@@ -51,10 +50,8 @@ export class WorldMesh implements SceneNode {
       const seed = (face.x * 31 + face.y * 17 + face.z * 7 + normIdx[face.normal]) | 0;
       const baseColor = varyColor(face.color, seed);
       const brightness = FACE_BRIGHTNESS[face.normal];
-      const noiseIdx = pickNoiseSeed(face.x, face.y, face.z) % noiseUrls.length;
-      const noiseUrl = noiseUrls[noiseIdx];
 
-      /* процедурный стиль: цвет + градиент AO (грязные углы) + шум */
+      /* процедурный стиль: цвет + AO. Шум — общий SVG feTurbulence на .voxel-world */
       const aoGradient = 'linear-gradient(135deg,transparent 50%,rgba(0,0,0,0.12) 100%),linear-gradient(225deg,transparent 50%,rgba(0,0,0,0.08) 100%)';
       div.className = 'vf vf-proc';
       div.style.cssText =
@@ -62,9 +59,8 @@ export class WorldMesh implements SceneNode {
         `backface-visibility:hidden;transform-origin:0 0;` +
         `image-rendering:pixelated;pointer-events:auto;` +
         `background-color:${baseColor};` +
-        `background-image:url("${noiseUrl}"),${aoGradient};` +
-        `background-size:64px 64px,100% 100%,100% 100%;` +
-        `background-blend-mode:overlay,normal,normal;` +
+        `background-image:${aoGradient};` +
+        `background-size:100% 100%,100% 100%;` +
         `filter:brightness(${brightness});`;
 
       div.style.transform = faceTransform(face, s);
@@ -96,20 +92,32 @@ export class WorldMesh implements SceneNode {
   }
 }
 
+/* Микро-нахлёст 1.005 (PS1-трюк): грани чуть больше, закрывают щели */
+const SCALE = 1.005;
 function faceTransform(f: MergedFace, s: number): string {
   const gx = f.x, gy = f.y, gz = f.z;
+  let t: string;
   switch (f.normal) {
     case 'top':
-      return `translate3d(${gx * s}px,${-(gy + 1) * s}px,${gz * s}px) rotateX(90deg)`;
+      t = `translate3d(${gx * s}px,${-(gy + 1) * s}px,${gz * s}px) rotateX(90deg)`;
+      break;
     case 'bottom':
-      return `translate3d(${gx * s}px,${-gy * s}px,${(gz + f.h) * s}px) rotateX(-90deg)`;
+      t = `translate3d(${gx * s}px,${-gy * s}px,${(gz + f.h) * s}px) rotateX(-90deg)`;
+      break;
     case 'front':
-      return `translate3d(${gx * s}px,${-(gy + f.h) * s}px,${(gz + 1) * s}px)`;
+      t = `translate3d(${gx * s}px,${-(gy + f.h) * s}px,${(gz + 1) * s}px)`;
+      break;
     case 'back':
-      return `translate3d(${(gx + f.w) * s}px,${-(gy + f.h) * s}px,${gz * s}px) rotateY(180deg)`;
+      t = `translate3d(${(gx + f.w) * s}px,${-(gy + f.h) * s}px,${gz * s}px) rotateY(180deg)`;
+      break;
     case 'right':
-      return `translate3d(${(gx + 1) * s}px,${-(gy + f.h) * s}px,${(gz + f.w) * s}px) rotateY(90deg)`;
+      t = `translate3d(${(gx + 1) * s}px,${-(gy + f.h) * s}px,${(gz + f.w) * s}px) rotateY(90deg)`;
+      break;
     case 'left':
-      return `translate3d(${gx * s}px,${-(gy + f.h) * s}px,${gz * s}px) rotateY(-90deg)`;
+      t = `translate3d(${gx * s}px,${-(gy + f.h) * s}px,${gz * s}px) rotateY(-90deg)`;
+      break;
+    default:
+      t = '';
   }
+  return t + ` scale(${SCALE})`;
 }

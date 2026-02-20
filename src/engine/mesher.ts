@@ -16,13 +16,12 @@ const CONFIGS: {
 ];
 
 /**
- * Greedy meshing from a flat grid (Uint8Array) + palette.
- * grid[x + y*sx + z*sx*sy] = palette index (0 = air).
- * sx, sy, sz: dimensions (default cubic 32).
+ * Greedy meshing: объединяет воксели в максимально возможные 2D-прямоугольники.
+ * Для каждого направления (6 граней) — срез по оси, greedy merge по цвету.
+ * Итог: минимальное число DOM-элементов (квадов).
  *
- * Multi-block: одинаковые соседние воксели по каждому направлению
- * объединяются в один квад (greedy merge). Макро-объекты (дом из 100 вокселей)
- * дают 4 стены = 4 плоских полигона на сторону (минимальный draw call).
+ * Culling: грань рендерится только если сосед в её направлении — воздух (line 77).
+ * Полностью окружённый воксель не даёт ни одной грани.
  */
 export function greedyMeshGrid(
   grid: Uint8Array,

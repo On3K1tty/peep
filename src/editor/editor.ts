@@ -115,6 +115,7 @@ export class Editor {
 
     const ORBIT_SPEED = 1.2;
     const ZOOM_SPEED = 2;
+    let lastRx = this._cam.state.rotationX, lastRy = this._cam.state.rotationY, lastDist = this._cam.state.distance;
     const renderLoop = () => {
       if (this._gyro?.enabled) {
         this._gyro.update(this._cam);
@@ -125,7 +126,11 @@ export class Editor {
         if (this._editorZoomDelta) this._cam.zoom(this._editorZoomDelta * ZOOM_SPEED);
         this._editorZoomDelta = 0;
       }
-      this._renderer.render();
+      const rx = this._cam.state.rotationX, ry = this._cam.state.rotationY, d = this._cam.state.distance;
+      if (rx !== lastRx || ry !== lastRy || d !== lastDist) {
+        lastRx = rx; lastRy = ry; lastDist = d;
+        this._renderer.render();
+      }
       requestAnimationFrame(renderLoop);
     };
     requestAnimationFrame(renderLoop);
